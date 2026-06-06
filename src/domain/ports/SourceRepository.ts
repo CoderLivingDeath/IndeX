@@ -10,6 +10,7 @@ export interface SourceRepository {
   getById(id: string): Promise<SourceData | null>;
   getByPath(path: string): Promise<SourceData[]>;
   delete(id: string): Promise<void>;
+  deleteByPath(path: string): Promise<void>;
   search(query: SearchQuery): Promise<SearchResult[]>;
   hasSemanticBlake3(hash: string): Promise<boolean>;
   hasModelEmbedding(id: string): Promise<boolean>;
@@ -19,4 +20,5 @@ export interface SourceRepository {
   upsertFileIndex(index: FileIndex): Promise<void>;
   getFileIndex(path: string): Promise<FileIndex | null>;
   deleteFileIndex(path: string): Promise<void>;
+  dropAll(): Promise<void>;
 }

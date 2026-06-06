@@ -11,6 +11,7 @@ describe("SourceRepository interface", () => {
       getById: async () => null,
       getByPath: async () => [],
       delete: async () => {},
+      deleteByPath: async () => {},
       search: async () => [],
       hasSemanticBlake3: async () => false,
       hasModelEmbedding: async () => false,
@@ -25,6 +26,7 @@ describe("SourceRepository interface", () => {
       upsertFileIndex: async () => {},
       getFileIndex: async () => null,
       deleteFileIndex: async () => {},
+      dropAll: async () => {},
     };
 
     // Verify every method exists and is a function
@@ -33,6 +35,7 @@ describe("SourceRepository interface", () => {
     expect(typeof mock.getById).toBe("function");
     expect(typeof mock.getByPath).toBe("function");
     expect(typeof mock.delete).toBe("function");
+    expect(typeof mock.deleteByPath).toBe("function");
     expect(typeof mock.search).toBe("function");
     expect(typeof mock.hasSemanticBlake3).toBe("function");
     expect(typeof mock.hasModelEmbedding).toBe("function");
@@ -42,6 +45,7 @@ describe("SourceRepository interface", () => {
     expect(typeof mock.upsertFileIndex).toBe("function");
     expect(typeof mock.getFileIndex).toBe("function");
     expect(typeof mock.deleteFileIndex).toBe("function");
+    expect(typeof mock.dropAll).toBe("function");
   });
 
   test("methods return Promise (async)", async () => {
@@ -51,6 +55,7 @@ describe("SourceRepository interface", () => {
       getById: async () => null,
       getByPath: async () => [],
       delete: async () => {},
+      deleteByPath: async () => {},
       search: async () => [],
       hasSemanticBlake3: async () => true,
       hasModelEmbedding: async () => false,
@@ -65,6 +70,7 @@ describe("SourceRepository interface", () => {
       upsertFileIndex: async () => {},
       getFileIndex: async () => null,
       deleteFileIndex: async () => {},
+      dropAll: async () => {},
     };
 
     // All methods that return promises should resolve
@@ -73,6 +79,7 @@ describe("SourceRepository interface", () => {
     await expect(mock.getById("x")).resolves.toBeNull();
     await expect(mock.getByPath("/a.ts")).resolves.toEqual([]);
     await expect(mock.delete("x")).resolves.toBeUndefined();
+    await expect(mock.deleteByPath("/a.ts")).resolves.toBeUndefined();
     await expect(mock.search({} as never)).resolves.toEqual([]);
     await expect(mock.hasSemanticBlake3("h")).resolves.toBe(true);
     await expect(mock.hasModelEmbedding("id")).resolves.toBe(false);
@@ -87,6 +94,7 @@ describe("SourceRepository interface", () => {
     await expect(mock.upsertFileIndex({} as never)).resolves.toBeUndefined();
     await expect(mock.getFileIndex("/a.ts")).resolves.toBeNull();
     await expect(mock.deleteFileIndex("/a.ts")).resolves.toBeUndefined();
+    await expect(mock.dropAll()).resolves.toBeUndefined();
   });
 
   test("interface has exactly the specified number of methods", () => {
@@ -97,6 +105,7 @@ describe("SourceRepository interface", () => {
       getById: async () => null,
       getByPath: async () => [],
       delete: async () => {},
+      deleteByPath: async () => {},
       search: async () => [],
       hasSemanticBlake3: async () => false,
       hasModelEmbedding: async () => false,
@@ -111,8 +120,9 @@ describe("SourceRepository interface", () => {
       upsertFileIndex: async () => {},
       getFileIndex: async () => null,
       deleteFileIndex: async () => {},
+      dropAll: async () => {},
     };
-    // All 14 methods
-    expect(Object.keys(mock).length).toBe(14);
+    // All 16 methods
+    expect(Object.keys(mock).length).toBe(16);
   });
 });
