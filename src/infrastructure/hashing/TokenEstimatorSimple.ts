@@ -1,7 +1,7 @@
 import type { TokenEstimator } from "../../domain/systems/HashingSystem";
 
 /**
- * A simple token estimator that counts bytes and divides by 4.
+ * A simple token estimator that counts bytes (via TextEncoder) and divides by 4.
  * Provides a rough estimate without needing a model-specific tokenizer.
  */
 export class TokenEstimatorSimple implements TokenEstimator {
@@ -9,6 +9,7 @@ export class TokenEstimatorSimple implements TokenEstimator {
 
   async estimate(text: string): Promise<number> {
     if (text.length === 0) return 0;
-    return Math.ceil(text.length / 4);
+    const bytes = new TextEncoder().encode(text).length;
+    return Math.ceil(bytes / 4);
   }
 }

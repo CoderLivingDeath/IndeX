@@ -2,8 +2,8 @@ import type { TokenEstimator } from "../../domain/systems/HashingSystem";
 import { TokenEstimatorSimple } from "./TokenEstimatorSimple";
 
 /**
- * Token estimator that attempts to use `gpt-tokenizer` for accurate GPT-4 token counts.
- * Falls back to TokenEstimatorSimple (byte-division) if gpt-tokenizer is unavailable.
+ * Token estimator using `gpt-tokenizer` (community package) for GPT-4 token counts.
+ * Falls back to TokenEstimatorSimple if gpt-tokenizer is unavailable.
  */
 export class TokenEstimatorTiktoken implements TokenEstimator {
   readonly model = "gpt-4";

@@ -12,7 +12,13 @@ export type SourceType = "code" | "markdown" | "obsidian" | "generic";
  * Narrow via the `kind` field.
  */
 export type SourceMetadata =
-  | { kind: "code"; language: string; packageName?: string }
+  | {
+      kind: "code";
+      language: string;
+      packageName?: string;
+      complexity?: { lines: number; functions: number; classes: number };
+      topLevelDeclarations?: string[];
+    }
   | { kind: "markdown"; heading?: string; section?: string; wordCount?: number }
   | { kind: "obsidian"; tags: string[]; links: string[]; frontmatter?: Record<string, unknown> }
   | { kind: "generic"; encoding: string; mimeType?: string };
@@ -74,6 +80,7 @@ export interface ParsedSource {
   metadata: SourceMetadata;
   file_blake3: string;
   last_parsed: string; // ISO 8601
+  fileIndex?: import("./ast").FileIndex; // Code parser only
 }
 
 /**

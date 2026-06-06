@@ -1,1 +1,2 @@
-console.log("IndeX started");
+// Application entry point — startup pending Logger integration
+export {};
