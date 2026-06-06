@@ -1,0 +1,23 @@
+# Node / Bun
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# IndeX data
+.indeX/data/
+.indeX/config.json
+
+# Editor
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
