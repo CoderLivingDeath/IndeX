@@ -32,6 +32,6 @@ export interface Tokenizer {
 export interface ContextPacker {
   pack(
     results: SearchResult[],
-    options?: { maxTokens?: number },
+    options?: { maxTokens?: number; format?: "rag" | "context" },
   ): Promise<PackedContext>;
 }
