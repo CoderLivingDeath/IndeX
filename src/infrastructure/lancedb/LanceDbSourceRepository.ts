@@ -198,6 +198,17 @@ export class LanceDbSourceRepository implements SourceRepository {
     return results.map((r) => this.recordToSourceData(r as Record<string, unknown>));
   }
 
+  async getBySourceId(sourceId: string): Promise<SourceData[]> {
+    const table = await this.getSourcesTable();
+    if (!table) return [];
+
+    const results = await table.query()
+      .where(`source_id = '${escapeLanceSqlString(sourceId)}'`)
+      .toArray();
+
+    return results.map((r) => this.recordToSourceData(r as Record<string, unknown>));
+  }
+
   async delete(id: string): Promise<void> {
     const table = await this.getSourcesTable();
     if (!table) return;
@@ -219,15 +230,57 @@ export class LanceDbSourceRepository implements SourceRepository {
     const topK = query.top_k ?? 10;
     let rows: Record<string, unknown>[];
 
-    if (query.mode === "semantic" && query.filters?.vector && Array.isArray(query.filters.vector)) {
-      const vec = Float32Array.from(query.filters.vector as number[]);
-      const lanceQuery = table.vectorSearch(vec).limit(topK);
-      if (query.source_types && query.source_types.length > 0) {
-        lanceQuery.where(buildTypeFilter(query.source_types));
+    const hasVector = query.filters?.vector && Array.isArray(query.filters.vector) && (query.filters.vector as number[]).length > 0;
+    const filters: string[] = [];
+    if (query.source_types && query.source_types.length > 0) {
+      filters.push(buildTypeFilter(query.source_types));
+    }
+    if (query.tags && query.tags.length > 0) {
+      filters.push(buildTagFilter(query.tags));
+    }
+    const filterClause = filters.length > 0 ? filters.join(" AND ") : undefined;
+
+    if (query.mode === "hybrid" && hasVector) {
+      // Hybrid: combine ANN + FTS results, then merge & re-rank
+      const vec = Float32Array.from(query.filters!.vector as number[]);
+      const annQuery = table.vectorSearch(vec).limit(topK * 2);
+      if (filterClause) annQuery.where(filterClause);
+      let annRows: Record<string, unknown>[];
+      try { annRows = (await annQuery.toArray()) as Record<string, unknown>[]; } catch { annRows = []; }
+
+      let ftsRows: Record<string, unknown>[];
+      try {
+        ftsRows = await this.executeKeywordSearch(table, query.text, topK * 2, query.source_types, query.tags);
+      } catch { ftsRows = []; }
+
+      // Merge by id, keep max normalised score
+      const merged = new Map<string, { row: Record<string, unknown>; score: number }>();
+      const maxAnn = annRows.reduce((m, r) => Math.max(m, (r._distance as number) ?? 0), 0) || 1;
+      const maxFts = ftsRows.reduce((m, r) => Math.max(m, (r._score as number) ?? 0), 0) || 1;
+
+      for (const r of annRows) {
+        const id = r.id as string;
+        const norm = ((r._distance as number) ?? 0) / maxAnn;
+        merged.set(id, { row: r, score: norm * 0.7 }); // ANN weight 0.7
       }
+      for (const r of ftsRows) {
+        const id = r.id as string;
+        const norm = ((r._score as number) ?? 0) / maxFts;
+        const existing = merged.get(id);
+        merged.set(id, { row: r, score: (existing?.score ?? 0) + norm * 0.3 }); // FTS weight 0.3
+      }
+
+      rows = Array.from(merged.entries())
+        .sort((a, b) => b[1].score - a[1].score)
+        .slice(0, topK)
+        .map(([, v]) => v.row);
+    } else if (query.mode === "semantic" && hasVector) {
+      const vec = Float32Array.from(query.filters!.vector as number[]);
+      const lanceQuery = table.vectorSearch(vec).limit(topK);
+      if (filterClause) lanceQuery.where(filterClause);
       rows = (await lanceQuery.toArray()) as Record<string, unknown>[];
     } else {
-      rows = await this.executeKeywordSearch(table, query.text, topK, query.source_types);
+      rows = await this.executeKeywordSearch(table, query.text, topK, query.source_types, query.tags);
     }
 
     const results: SearchResult[] = rows.map((r) => ({
@@ -248,19 +301,27 @@ export class LanceDbSourceRepository implements SourceRepository {
     text: string,
     topK: number,
     sourceTypes?: SourceType[],
+    tags?: string[],
   ): Promise<Record<string, unknown>[]> {
     try {
       let lanceQuery = table.query().limit(topK);
       if (text) {
         lanceQuery = lanceQuery.fullTextSearch(text);
       }
+      const filters: string[] = [];
       if (sourceTypes && sourceTypes.length > 0) {
-        lanceQuery = lanceQuery.where(buildTypeFilter(sourceTypes));
+        filters.push(buildTypeFilter(sourceTypes));
+      }
+      if (tags && tags.length > 0) {
+        filters.push(buildTagFilter(tags));
+      }
+      if (filters.length > 0) {
+        lanceQuery = lanceQuery.where(filters.join(" AND "));
       }
       return (await lanceQuery.toArray()) as Record<string, unknown>[];
     } catch {
       // FTS not available — fall back to WHERE + LIKE
-      return this.executeFallbackSearch(table, text, topK, sourceTypes);
+      return this.executeFallbackSearch(table, text, topK, sourceTypes, tags);
     }
   }
 
@@ -269,6 +330,7 @@ export class LanceDbSourceRepository implements SourceRepository {
     text: string,
     topK: number,
     sourceTypes?: SourceType[],
+    tags?: string[],
   ): Promise<Record<string, unknown>[]> {
     const conditions: string[] = [];
 
@@ -278,6 +340,9 @@ export class LanceDbSourceRepository implements SourceRepository {
     }
     if (sourceTypes && sourceTypes.length > 0) {
       conditions.push(buildTypeFilter(sourceTypes));
+    }
+    if (tags && tags.length > 0) {
+      conditions.push(buildTagFilter(tags));
     }
 
     let lanceQuery = table.query().limit(topK);
@@ -551,4 +616,10 @@ function escapeLanceSqlString(value: string): string {
 function buildTypeFilter(types: SourceType[]): string {
   const escaped = types.map((t) => `'${escapeLanceSqlString(t)}'`).join(", ");
   return `type IN (${escaped})`;
+}
+
+/** Build a SQL filter for tags (JSON contains check). */
+function buildTagFilter(tags: string[]): string {
+  const conditions = tags.map((t) => `tags LIKE '%"${escapeLanceSqlString(t)}"%'`);
+  return conditions.join(" OR ");
 }

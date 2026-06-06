@@ -38,6 +38,16 @@ export class MockSourceRepository implements SourceRepository {
     return results;
   }
 
+  async getBySourceId(sourceId: string): Promise<SourceData[]> {
+    const results: SourceData[] = [];
+    for (const source of this.sources.values()) {
+      if (source.source_id === sourceId) {
+        results.push(source);
+      }
+    }
+    return results;
+  }
+
   async delete(id: string): Promise<void> {
     this.sources.delete(id);
   }
@@ -59,6 +69,13 @@ export class MockSourceRepository implements SourceRepository {
       // Filter by source_types if specified
       if (query.source_types && query.source_types.length > 0) {
         if (!query.source_types.includes(source.type)) {
+          continue;
+        }
+      }
+
+      // Filter by tags if specified
+      if (query.tags && query.tags.length > 0) {
+        if (!query.tags.some((t) => source.tags.includes(t))) {
           continue;
         }
       }

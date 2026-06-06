@@ -10,6 +10,7 @@ describe("SourceRepository interface", () => {
       upsertBatch: async () => {},
       getById: async () => null,
       getByPath: async () => [],
+      getBySourceId: async () => [],
       delete: async () => {},
       deleteByPath: async () => {},
       search: async () => [],
@@ -34,6 +35,7 @@ describe("SourceRepository interface", () => {
     expect(typeof mock.upsertBatch).toBe("function");
     expect(typeof mock.getById).toBe("function");
     expect(typeof mock.getByPath).toBe("function");
+    expect(typeof mock.getBySourceId).toBe("function");
     expect(typeof mock.delete).toBe("function");
     expect(typeof mock.deleteByPath).toBe("function");
     expect(typeof mock.search).toBe("function");
@@ -54,6 +56,7 @@ describe("SourceRepository interface", () => {
       upsertBatch: async () => {},
       getById: async () => null,
       getByPath: async () => [],
+      getBySourceId: async () => [],
       delete: async () => {},
       deleteByPath: async () => {},
       search: async () => [],
@@ -78,6 +81,7 @@ describe("SourceRepository interface", () => {
     await expect(mock.upsertBatch([])).resolves.toBeUndefined();
     await expect(mock.getById("x")).resolves.toBeNull();
     await expect(mock.getByPath("/a.ts")).resolves.toEqual([]);
+    await expect(mock.getBySourceId("src")).resolves.toEqual([]);
     await expect(mock.delete("x")).resolves.toBeUndefined();
     await expect(mock.deleteByPath("/a.ts")).resolves.toBeUndefined();
     await expect(mock.search({} as never)).resolves.toEqual([]);
@@ -104,6 +108,7 @@ describe("SourceRepository interface", () => {
       upsertBatch: async () => {},
       getById: async () => null,
       getByPath: async () => [],
+      getBySourceId: async () => [],
       delete: async () => {},
       deleteByPath: async () => {},
       search: async () => [],
@@ -122,7 +127,7 @@ describe("SourceRepository interface", () => {
       deleteFileIndex: async () => {},
       dropAll: async () => {},
     };
-    // All 16 methods
-    expect(Object.keys(mock).length).toBe(16);
+    // All 17 methods
+    expect(Object.keys(mock).length).toBe(17);
   });
 });

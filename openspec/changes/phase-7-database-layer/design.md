@@ -22,7 +22,7 @@ IndeX needs a persistent, local, serverless vector database for storing chunk em
 ## Decisions
 
 - **Two-table design**: Separates chunk data from file-level AST data. `file_index` has one row per file; `sources` has many rows per file. This avoids duplicating AST data across every chunk.
-- **Multi-column vectors**: Each embedding model gets its own column (`vect_nomic_embed_text`, `vect_mxbai_embed_large`). LanceDB supports querying specific vector columns. This is more space-efficient than storing all vectors in one column with a model discriminator.
+- **Single embeddings column (v1)**: The current `SourceData.embeddings` field is typed as `number[]`, so all vectors are stored in a single `embeddings` column. Multi-column storage (`vect_{model_name}`) is deferred until `SourceData` supports multi-model embeddings (e.g., `Record<string, number[]>`). LanceDB will dynamically add vector columns when that happens.
 - **`chunk_id = source_id:chunk_index`**: Enables lookups by source without knowing individual chunk IDs. `getBySourceId(source_id)` returns all chunks for a file.
 - **MockSourceRepository in-memory**: Uses `Map<string, SourceData>` for zero-dependency fast tests. All search operations are simplified (linear scan + in-memory sort) — correctness for orchestration logic, not search quality.
 - **LanceDB in-memory mode**: `lancedb.connect("memory://")` creates a temporary database. Tests don't write to disk, don't need cleanup, and run fast.

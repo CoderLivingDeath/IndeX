@@ -9,6 +9,7 @@ export interface SourceRepository {
   upsertBatch(data: SourceData[]): Promise<void>;
   getById(id: string): Promise<SourceData | null>;
   getByPath(path: string): Promise<SourceData[]>;
+  getBySourceId(sourceId: string): Promise<SourceData[]>;
   delete(id: string): Promise<void>;
   deleteByPath(path: string): Promise<void>;
   search(query: SearchQuery): Promise<SearchResult[]>;
