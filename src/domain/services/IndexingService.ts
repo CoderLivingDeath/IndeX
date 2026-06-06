@@ -1,0 +1,112 @@
+import { readdirSync } from "fs";
+import { join } from "path";
+import type { FileFilter } from "../ports/FileFilter";
+import type { SourceParserRegistry } from "../ports/SourceParserRegistry";
+import type { Chunker } from "../systems/ChunkingSystem";
+import type { EmbedderRegistry } from "../systems/EmbeddingSystem";
+import type { SourceRepository } from "../ports/SourceRepository";
+import type { Hasher } from "../systems/HashingSystem";
+import type { SourceData, IndexStats } from "../types";
+
+/**
+ * Orchestrates the indexing pipeline: scan directory → filter files →
+ * parse each file → chunk → embed via applicable models → upsert to repo.
+ *
+ * Pure business logic — all external dependencies injected via constructor.
+ */
+export class IndexingService {
+  constructor(
+    private readonly fileFilter: FileFilter,
+    private readonly parserRegistry: SourceParserRegistry,
+    private readonly chunker: Chunker,
+    private readonly embedderRegistry: EmbedderRegistry,
+    private readonly repo: SourceRepository,
+    private readonly hasher: Hasher,
+  ) {}
+
+  /**
+   * Index all files in `directory`.
+   *
+   * 1. Recursively scan for files
+   * 2. Filter via `fileFilter.shouldInclude`
+   * 3. Parse each through the matching `SourceParser`
+   * 4. Chunk the parsed content
+   * 5. Embed every chunk with **all** applicable embedders (per source type)
+   * 6. Build `SourceData` rows and upsert in batch
+   * 7. Return aggregate stats
+   */
+  async index(directory: string): Promise<IndexStats> {
+    const files = this.scanDirectory(directory);
+    const included = files.filter((f) => this.fileFilter.shouldInclude(f));
+
+    for (const filePath of included) {
+      const parser = this.parserRegistry.getParser(filePath);
+      if (!parser) continue;
+
+      const parsed = await parser.parse(filePath);
+      const chunks = await this.chunker.chunk(parsed.content);
+      const sourceId = crypto.randomUUID();
+
+      const batch: SourceData[] = [];
+
+      for (const chunk of chunks) {
+        const semanticHash = await this.hasher.hash(chunk.core_content);
+        const embedder = this.embedderRegistry.getEmbedder(parsed.type);
+        const embeddings: number[] = [];
+
+        // Embed via the model registered for this source type (if any)
+        if (embedder) {
+          const result = await embedder.embed(chunk.core_content);
+          embeddings.push(...result.vector);
+        }
+
+        const now = new Date().toISOString();
+
+        batch.push({
+          id: crypto.randomUUID(),
+          chunk_id: crypto.randomUUID(),
+          source_id: sourceId,
+          type: parsed.type,
+          title: filePath,
+          content: chunk.content,
+          tags: parsed.tags,
+          path: filePath,
+          file_blake3: parsed.file_blake3,
+          semantic_blake3: semanticHash,
+          chunk_index: chunk.chunk_index,
+          total_chunks: chunk.total_chunks,
+          embeddings,
+          metadata: parsed.metadata,
+          created_at: now,
+          updated_at: now,
+        });
+      }
+
+      if (batch.length > 0) {
+        await this.repo.upsertBatch(batch);
+      }
+
+      // Persist FileIndex if the parser provides one
+      if (parsed.fileIndex) {
+        await this.repo.upsertFileIndex(parsed.fileIndex);
+      }
+    }
+
+    return this.repo.stats();
+  }
+
+  /** Recursively collect all file paths under `dir`. */
+  private scanDirectory(dir: string): string[] {
+    const results: string[] = [];
+    const entries = readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results.push(...this.scanDirectory(fullPath));
+      } else if (entry.isFile()) {
+        results.push(fullPath);
+      }
+    }
+    return results;
+  }
+}
