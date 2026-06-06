@@ -1,0 +1,22 @@
+{
+  "name": "index",
+  "module": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "hash-wasm": "^4.11.0",
+    "zod": "^3.23.0",
+    "remark": "^15.0.0",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.0",
+    "yaml": "^2.6.0"
+  }
+}
