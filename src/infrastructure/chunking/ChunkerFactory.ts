@@ -8,7 +8,6 @@ import { OverflowChunker } from "./OverflowChunker";
 import { CodeChunker } from "./CodeChunker";
 
 const MIN_MERGE_TOKENS = 50;
-const OVERLAP_TOKENS = 32;
 
 /**
  * Factory that builds ChunkerPipeline instances with configurable
@@ -18,6 +17,7 @@ export class ChunkerFactory {
   constructor(
     private readonly maxTokens: number,
     private readonly tokenEstimator: TokenEstimator,
+    private readonly overlapTokens: number = 32,
   ) {}
 
   /**
@@ -51,6 +51,7 @@ export class ChunkerFactory {
     const headingChunker = new HeadingChunker(
       this.maxTokens,
       this.tokenEstimator,
+      paragraphChunker, // fallback for oversized sections
     );
 
     const codeChunker = new CodeChunker(
@@ -102,7 +103,7 @@ export class ChunkerFactory {
             const oc = chain.find((c) => c.type === "generic" || c instanceof OverflowChunker);
             if (oc) {
               const result = await oc.chunk(text);
-              return postProcess(result, this.tokenEstimator);
+              return postProcess(result, this.tokenEstimator, this.overlapTokens);
             }
             return [];
           }
@@ -111,7 +112,7 @@ export class ChunkerFactory {
             const oc = overflowChunkerInstance ?? chain.find((c) => c instanceof OverflowChunker);
             if (oc) {
               const result = await oc.chunk(text);
-              return postProcess(result, this.tokenEstimator);
+              return postProcess(result, this.tokenEstimator, this.overlapTokens);
             }
             return [];
           }
@@ -128,7 +129,7 @@ export class ChunkerFactory {
             for (const chunker of activeChain) {
               const result = await chunker.chunk(text);
               if (result.length > 0) {
-                return postProcess(result, this.tokenEstimator);
+                return postProcess(result, this.tokenEstimator, this.overlapTokens);
               }
             }
             return [];
@@ -145,6 +146,7 @@ export class ChunkerFactory {
 async function postProcess(
   chunks: Chunk[],
   estimator: TokenEstimator,
+  overlapTokens: number = 32,
 ): Promise<Chunk[]> {
   if (chunks.length === 0) return chunks;
 
@@ -152,7 +154,7 @@ async function postProcess(
   const merged = await mergeSmallChunks(chunks, estimator);
 
   // Step 2: Add overlap
-  return addOverlap(merged, estimator);
+  return addOverlap(merged, estimator, overlapTokens);
 }
 
 /**
@@ -216,13 +218,15 @@ async function mergeSmallChunks(
 }
 
 /**
- * Adds OVERLAP_TOKENS of overlap text from the end of each chunk
+ * Adds `overlapTokens` of overlap text from the end of each chunk
  * to the beginning of the next chunk's content.
+ * Overlap is aligned to line boundaries (never cuts a line mid-text).
  * Overlap text is NOT included in core_content.
  */
 async function addOverlap(
   chunks: Chunk[],
   estimator: TokenEstimator,
+  overlapTokens: number = 32,
 ): Promise<Chunk[]> {
   if (chunks.length <= 1) return chunks;
 
@@ -239,13 +243,42 @@ async function addOverlap(
         1,
       );
       const overlapChars = Math.min(
-        Math.floor(OVERLAP_TOKENS * charsPerToken),
+        Math.floor(overlapTokens * charsPerToken),
         prev.content.length,
       );
 
       if (overlapChars > 0) {
-        const overlapText = prev.content.slice(-overlapChars);
-        current.content = overlapText + "\n" + current.content;
+        // Find line boundary: start from (end - overlapChars) and find next \n
+        const startPos = Math.max(0, prev.content.length - overlapChars);
+        const newlinePos = prev.content.indexOf("\n", startPos);
+
+        // Align to line boundary: if we found a \n, start from the line after it
+        // If no \n found after startPos, use the last \n before startPos
+        let overlapStart: number;
+        if (newlinePos >= 0) {
+          overlapStart = newlinePos + 1; // Start after the newline
+        } else {
+          // No newline after startPos — look for last newline before startPos
+          const prevNewline = prev.content.lastIndexOf("\n", startPos);
+          overlapStart = prevNewline >= 0 ? prevNewline + 1 : startPos;
+        }
+
+        // If line-boundary overlap is empty or too small (< 1 token),
+        // fall back to including the whole last paragraph (between blank lines)
+        const overlapText = prev.content.slice(overlapStart);
+        const overlapTextTokens = await estimator.estimate(overlapText);
+        if (overlapTextTokens < 3 && overlapStart > 0) {
+          // Try paragraph-level overlap: content after last blank line
+          const paraStart = prev.content.lastIndexOf("\n\n");
+          if (paraStart >= 0 && paraStart < overlapStart) {
+            const paraOverlap = prev.content.slice(paraStart);
+            current.content = paraOverlap + "\n" + current.content;
+          } else {
+            current.content = overlapText + "\n" + current.content;
+          }
+        } else {
+          current.content = overlapText + "\n" + current.content;
+        }
         current.size_tokens = await estimator.estimate(current.content);
         // Core content stays unchanged (no overlap)
       }

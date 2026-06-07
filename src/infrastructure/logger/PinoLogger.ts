@@ -4,10 +4,12 @@ import type { Logger } from "../../domain/ports/Logger";
 export interface PinoLoggerOptions {
   level?: string;
   module?: string;
+  pretty?: boolean;
 }
 
 /**
  * Logger implementation using pino for structured JSON logging.
+ * When `pretty` is true, uses pino-pretty for human-readable output.
  */
 export class PinoLogger implements Logger {
   private logger: pino.Logger;
@@ -16,11 +18,19 @@ export class PinoLogger implements Logger {
     opts: PinoLoggerOptions = {},
     destination?: pino.DestinationStream,
   ) {
-    const { level = "info", module } = opts;
+    const { level = "info", module, pretty = false } = opts;
     const base = module ? { module } : {};
+
+    const stream = destination ?? (pretty
+      ? pino.transport({
+          target: "pino-pretty",
+          options: { colorize: true, translateTime: "SYS:HH:MM:ss" },
+        })
+      : undefined);
+
     this.logger = pino(
-      { level, base },
-      destination ?? undefined,
+      { level, base, ...(stream ? {} : {}) },
+      stream ?? undefined,
     );
   }
 
@@ -57,7 +67,7 @@ export class PinoLogger implements Logger {
   }
 
   child(context: Record<string, unknown>): PinoLogger {
-    const child = new PinoLogger({}, this.logger.stream);
+    const child = new PinoLogger({ pretty: true }, this.logger.stream);
     // @ts-expect-error - accessing internal pino logger for child creation
     child.logger = this.logger.child(context);
     return child;

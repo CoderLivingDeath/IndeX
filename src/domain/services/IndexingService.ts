@@ -6,7 +6,8 @@ import type { Chunker } from "../systems/ChunkingSystem";
 import type { EmbedderRegistry } from "../systems/EmbeddingSystem";
 import type { SourceRepository } from "../ports/SourceRepository";
 import type { Hasher } from "../systems/HashingSystem";
-import type { SourceData, IndexStats } from "../types";
+import type { SourceData, IndexStats, SourceMetadata } from "../types";
+import type { FileIndex } from "../ast";
 
 /**
  * Orchestrates the indexing pipeline: scan directory → filter files →
@@ -47,6 +48,9 @@ export class IndexingService {
       const chunks = await this.chunker.chunk(parsed.content);
       const sourceId = crypto.randomUUID();
 
+      // Enrich metadata with AST when available
+      const metaWithAst = enrichMetadata(parsed.metadata, parsed.fileIndex);
+
       const batch: SourceData[] = [];
 
       for (const chunk of chunks) {
@@ -76,7 +80,7 @@ export class IndexingService {
           chunk_index: chunk.chunk_index,
           total_chunks: chunk.total_chunks,
           embeddings,
-          metadata: parsed.metadata,
+          metadata: metaWithAst,
           created_at: now,
           updated_at: now,
         });
@@ -109,4 +113,22 @@ export class IndexingService {
     }
     return results;
   }
+}
+
+/**
+ * Enrich metadata with AST data when fileIndex is available.
+ */
+function enrichMetadata(
+  meta: SourceMetadata,
+  fileIndex?: FileIndex,
+): SourceMetadata {
+  if (!fileIndex || meta.kind !== "code") return meta;
+  return {
+    ...meta,
+    ast: {
+      symbols: fileIndex.symbols.map((s) => ({ kind: s.kind, name: s.name, line: s.startPosition.line })),
+      imports: fileIndex.imports.map((i) => ({ source: i.source, specifiers: i.specifiers })),
+      exports: fileIndex.exports.map((e) => ({ name: e.name, kind: e.kind })),
+    },
+  };
 }

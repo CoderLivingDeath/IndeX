@@ -4,9 +4,10 @@ import type { SourceType } from "../../domain/types";
 
 /**
  * Splits Markdown content by heading boundaries (#, ##, etc.).
- * Sections that exceed maxTokens cause early termination — valid sections
- * collected before the over-long section are returned so the pipeline
- * gets partial results rather than an empty fallback.
+ * Sections that exceed maxTokens are delegated to the fallback chunker
+ * (paragraph → sentence → overflow chain) so no content is lost.
+ * Each chunk includes its heading as context, and oversized sections
+ * are split at paragraph/sentence boundaries while preserving the heading.
  */
 export class HeadingChunker implements Chunker {
   readonly type: SourceType = "markdown";
@@ -15,6 +16,7 @@ export class HeadingChunker implements Chunker {
   constructor(
     private readonly maxTokens: number,
     private readonly tokenEstimator: TokenEstimator,
+    private readonly fallback?: Chunker,
   ) {}
 
   async chunk(text: string): Promise<Chunk[]> {
@@ -26,25 +28,54 @@ export class HeadingChunker implements Chunker {
     const chunks: Chunk[] = [];
     let chunkIndex = 0;
 
-    for (const section of sections) {
+    for (let si = 0; si < sections.length; si++) {
+      const section = sections[si];
       const tokenCount = await this.tokenEstimator.estimate(
         section.fullContent,
       );
 
-      if (tokenCount > this.maxTokens) {
-        // Section too long → stop here, return valid sections collected so far
-        // Over-long section data is lost — caller should ensure it's handled elsewhere
-        break;
+      if (tokenCount <= this.maxTokens) {
+        chunks.push({
+          content: section.fullContent.trim(),
+          core_content: section.body.trim(),
+          chunk_index: chunkIndex++,
+          total_chunks: 0,
+          strategy: this.strategy,
+          size_tokens: tokenCount,
+        });
+        continue;
       }
 
-      chunks.push({
-        content: section.fullContent,
-        core_content: section.body,
-        chunk_index: chunkIndex++,
-        total_chunks: 0,
-        strategy: this.strategy,
-        size_tokens: tokenCount,
-      });
+      // Section too long — delegate to fallback chain
+      if (this.fallback) {
+        const subChunks = await this.fallback.chunk(section.body);
+        for (const sc of subChunks) {
+          // Prepend section heading to every sub-chunk for context
+          const heading = section.heading || this.findSecondLevelHeading(section.body);
+          const withHeading = heading
+            ? heading + "\n\n" + sc.content
+            : sc.content;
+          const tokenCount2 = await this.tokenEstimator.estimate(withHeading);
+          chunks.push({
+            content: withHeading,
+            core_content: sc.core_content || sc.content,
+            chunk_index: chunkIndex++,
+            total_chunks: 0,
+            strategy: this.strategy,
+            size_tokens: tokenCount2,
+          });
+        }
+      } else {
+        // No fallback — just add oversized section as-is (better than losing data)
+        chunks.push({
+          content: section.fullContent.trim(),
+          core_content: section.body.trim(),
+          chunk_index: chunkIndex++,
+          total_chunks: 0,
+          strategy: this.strategy,
+          size_tokens: tokenCount,
+        });
+      }
     }
 
     // Fix total_chunks
@@ -53,6 +84,12 @@ export class HeadingChunker implements Chunker {
     }
 
     return chunks;
+  }
+
+  /** Find a second-level heading inside body as fallback context. */
+  private findSecondLevelHeading(text: string): string {
+    const m = text.match(/^##\s+(.+)$/m);
+    return m ? m[0].trim() : "";
   }
 
   /**

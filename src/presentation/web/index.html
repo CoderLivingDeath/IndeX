@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IndeX</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@15.0.10/marked.min.js"></script>
+<script>hljs.highlightAll();</script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; background: #0d1117; color: #e6edf3; }
+  .layout { display: flex; min-height: 100vh; }
+
+  /* Main */
+  .main { flex: 1; min-width: 0; padding: 24px; }
+  h1 { color: #f0883e; margin-bottom: 24px; font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  .card { background: #151b23; border: 1px solid #3d444d; border-radius: 0; padding: 20px; margin-bottom: 16px; }
+  input, select, button, textarea { font-size: 14px; padding: 8px 14px; border-radius: 0; border: 1px solid #3d444d; background: #0d1117; color: #e6edf3; outline: none; transition: border 0.15s; }
+  input:focus, select:focus, textarea:focus { border-color: #f0883e; }
+  button { background: #f0883e; border-color: #f0883e; color: #0d1117; cursor: pointer; font-weight: 600; white-space: nowrap; transition: background 0.15s; }
+  button:hover { background: #f6a35c; }
+  button.danger { background: #da3633; border-color: #f85149; color: #fff; }
+  button.danger:hover { background: #f85149; }
+  button.gray { background: #21262d; border-color: #3d444d; color: #e6edf3; }
+  button.gray:hover { background: #30363d; }
+  button.sm { font-size: 11px; padding: 4px 10px; }
+  .flex { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .flex-shrink { flex-shrink: 0; }
+  .flex-grow { flex: 1; min-width: 0; }
+  .gap-2 { gap: 4px; }
+  .mb-8 { margin-bottom: 8px; }
+
+  /* Progress */
+  .progress-wrap { height: 4px; background: #21262d; border-radius: 0; margin-top: 10px; overflow: hidden; display: none; }
+  .progress-wrap.active { display: block; }
+  .progress-bar { height: 100%; width: 0; background: #f0883e; border-radius: 0; }
+  .progress-bar.indeterminate { width: 25%; animation: progress-indet 1.2s ease infinite; }
+  @keyframes progress-indet { 0% { transform: translateX(-100%); } 100% { transform: translateX(450%); } }
+
+  /* Filters */
+  .filter-group { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; padding-top: 10px; border-top: 1px solid #21262d; margin-top: 10px; }
+  .filter-group label { font-size: 11px; color: #9198a1; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 3px; }
+  .filter-group .fg { display: flex; flex-direction: column; }
+  .filter-group .fg input[type="number"],
+  .filter-group .fg select { width: 80px; padding: 4px 8px; font-size: 12px; }
+  .filter-group .fg input[type="text"] { width: 140px; padding: 4px 8px; font-size: 12px; }
+  .chk-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chk-group label { font-size: 12px; color: #e6edf3; text-transform: none; letter-spacing: 0; font-weight: 400; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; background: #21262d; padding: 3px 10px; border: 1px solid #3d444d; }
+  .chk-group label:hover { border-color: #58a6ff; }
+  .chk-group input[type="checkbox"] { accent-color: #f0883e; width: 14px; height: 14px; cursor: pointer; }
+
+  .filter-toggle { font-size: 12px; color: #58a6ff; cursor: pointer; user-select: none; }
+  .filter-toggle:hover { color: #79c0ff; }
+
+  /* Results */
+  .result { padding: 16px; border-bottom: 1px solid #3d444d; cursor: pointer; transition: background 0.1s; }
+  .result:last-child { border-bottom: none; }
+  .result:hover { background: #1c2128; }
+  .result .path { color: #9198a1; font-size: 12px; font-family: "SF Mono", "Cascadia Code", "JetBrains Mono", monospace; word-break: break-all; line-height: 1.5; }
+  .result .score { color: #d2a8ff; font-size: 12px; white-space: nowrap; }
+  .result .match-type { font-size: 11px; padding: 2px 8px; border-radius: 0; white-space: nowrap; }
+  .result .match-type.keyword { color: #3fb950; background: #3fb95026; }
+  .result .match-type.semantic { color: #58a6ff; background: #58a6ff26; }
+  .result .match-type.hybrid { color: #d2a8ff; background: #d2a8ff26; }
+  .result .preview { margin-top: 8px; color: #e6edf3; font-size: 13px; line-height: 1.5; max-height: 60px; overflow: hidden; word-break: break-word; }
+  .result .preview * { margin: 0; font-size: inherit; line-height: inherit; color: inherit; }
+  .result .preview h1, .result .preview h2, .result .preview h3,
+  .result .preview h4, .result .preview h5, .result .preview h6 { font-size: inherit; font-weight: 600; display: inline; border: none; padding: 0; margin: 0; color: #f0883e; }
+  .result .preview h1::after, .result .preview h2::after,
+  .result .preview h3::after, .result .preview h4::after { content: ' · '; color: #9198a1; font-weight: 400; }
+  .result .preview p { display: inline; }
+  .result .preview p::after { content: '  '; }
+  .result .preview br { display: none; }
+  .result .preview strong { color: #f0f6fc; }
+  .result .preview code { background: #21262d; padding: 1px 4px; font-size: 0.9em; }
+  .result .preview pre, .result .preview blockquote, .result .preview ul,
+  .result .preview ol, .result .preview table, .result .preview hr,
+  .result .preview img { display: none; }
+  .result .meta-tags { margin-top: 8px; }
+  .tag { display: inline-block; background: #21262d; color: #9198a1; padding: 2px 8px; border-radius: 0; font-size: 11px; margin-right: 4px; margin-bottom: 2px; border: 1px solid #3d444d; }
+  .tag.type { color: #58a6ff; border-color: #58a6ff33; background: #58a6ff11; }
+
+  /* Detail expand */
+  .detail { display: none; margin: 12px 0 4px; }
+  .detail.open { display: block; }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 20px; background: #0d1117; border-radius: 0; padding: 12px; border: 1px solid #3d444d; }
+  .detail-grid .kv { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #21262d; gap: 8px; }
+  .detail-grid .kv .k { color: #9198a1; font-size: 11px; white-space: nowrap; }
+  .detail-grid .kv .v { color: #e6edf3; font-size: 11px; font-family: "SF Mono", "Cascadia Code", monospace; text-align: right; word-break: break-all; }
+  .section-label { color: #9198a1; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin: 12px 0 6px; }
+  .detail pre { background: #0d1117; padding: 12px; border-radius: 0; overflow-x: auto; font-size: 13px; line-height: 1.5; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid #3d444d; }
+
+  /* Pagination */
+  .pagination { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 16px 0; }
+  .pagination .page-btn { background: #21262d; border: 1px solid #3d444d; color: #e6edf3; padding: 6px 14px; font-size: 12px; cursor: pointer; }
+  .pagination .page-btn:hover:not(:disabled) { border-color: #f0883e; }
+  .pagination .page-btn:disabled { opacity: 0.4; cursor: default; }
+  .pagination .page-info { font-size: 12px; color: #9198a1; }
+  .pagination .page-size { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #9198a1; }
+
+  /* Sidebar */
+  .sidebar { width: 300px; min-width: 300px; background: #151b23; border-left: 1px solid #3d444d; padding: 24px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; max-height: 100vh; }
+  .sidebar h3 { color: #9198a1; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+  .sidebar .info-line { font-size: 12px; color: #9198a1; padding: 4px 0; display: flex; justify-content: space-between; border-bottom: 1px solid #21262d; align-items: center; gap: 6px; }
+  .sidebar .info-line .val { color: #e6edf3; text-align: right; font-weight: 500; font-family: "SF Mono", monospace; font-size: 11px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .sidebar .status-dot.green { background: #3fb950; }
+  .sidebar .status-dot.red { background: #f85149; }
+  .sidebar .status-dot.gray { background: #484f58; }
+  .sidebar .edit-btn { background: none; border: none; color: #58a6ff; cursor: pointer; font-size: 11px; padding: 1px 4px; }
+  .sidebar .edit-btn:hover { text-decoration: underline; }
+  .sidebar input.val-edit { font-size: 11px; padding: 2px 6px; width: 100%; background: #0d1117; border: 1px solid #3d444d; color: #e6edf3; font-family: "SF Mono", monospace; }
+  .sidebar select.val-edit { font-size: 11px; padding: 2px 6px; width: 100%; background: #0d1117; border: 1px solid #3d444d; color: #e6edf3; }
+  .sidebar .refresh-btn { background: none; border: none; color: #58a6ff; cursor: pointer; font-size: 11px; padding: 0; line-height: 1; }
+
+  #status-bar { font-size: 13px; margin-top: 10px; padding: 10px 14px; background: #0d1117; border-radius: 0; color: #9198a1; border: 1px solid #3d444d; word-break: break-word; }
+  #status-bar.ok { color: #3fb950; border-color: #3fb95033; background: #3fb9500a; }
+  #status-bar.error { color: #f85149; border-color: #f8514933; background: #f851490a; }
+
+  .ast-block { background: #0d1117; border: 1px solid #3d444d; border-radius: 0; padding: 10px 14px; margin-top: 6px; }
+  .ast-line { font-size: 12px; color: #9198a1; padding: 2px 0; font-family: "SF Mono", monospace; }
+  .ast-line .hl { color: #d2a8ff; }
+  .ast-line .hl2 { color: #58a6ff; }
+
+  /* All chunks list */
+  .chunks-container { margin-top: 8px; }
+  .chunk-item { background: #0d1117; border: 1px solid #3d444d; padding: 10px 14px; margin-bottom: 4px; cursor: pointer; }
+  .chunk-item:hover { border-color: #58a6ff; }
+  .chunk-item .chunk-hdr { display: flex; justify-content: space-between; font-size: 12px; color: #9198a1; }
+  .chunk-item .chunk-num { color: #58a6ff; font-weight: 600; }
+  .chunk-item .chunk-preview { font-size: 12px; color: #e6edf3; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chunk-item .chunk-full { display: none; margin-top: 8px; font-size: 13px; line-height: 1.5; max-height: 400px; overflow-y: auto; }
+  .chunk-item .chunk-full.open { display: block; }
+  .chunk-item .chunk-full pre { background: #151b23; border: 1px solid #3d444d; padding: 10px; overflow-x: auto; font-size: 12px; }
+
+  /* Rendered Markdown — card style matching the rest of UI */
+  .md-render { background: #151b23; border: 1px solid #3d444d; padding: 20px; line-height: 1.7; font-size: 14px; color: #e6edf3; overflow-x: auto; margin-bottom: 16px; }
+  .md-render h1, .md-render h2, .md-render h3, .md-render h4 { color: #f0883e; margin: 1.2em 0 0.5em; font-weight: 600; }
+  .md-render h1 { font-size: 1.6em; border-bottom: 1px solid #3d444d; padding-bottom: 8px; margin-top: 0; }
+  .md-render h2 { font-size: 1.35em; }
+  .md-render h3 { font-size: 1.15em; }
+  .md-render p { margin: 0 0 1em; }
+  .md-render a { color: #58a6ff; text-decoration: none; }
+  .md-render a:hover { text-decoration: underline; }
+  .md-render strong { color: #f0f6fc; }
+  .md-render code { background: #21262d; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; color: #d2a8ff; }
+  .md-render pre { background: #0d1117; border: 1px solid #3d444d; padding: 12px; border-radius: 0; overflow-x: auto; margin: 0 0 1em; }
+  .md-render pre code { background: none; padding: 0; color: inherit; border: none; }
+  .md-render blockquote { border-left: 3px solid #f0883e; padding: 4px 14px; margin: 0 0 1em; color: #9198a1; background: #0d1117; }
+  .md-render ul, .md-render ol { padding-left: 24px; margin: 0 0 1em; }
+  .md-render li { margin: 4px 0; }
+  .md-render table { border-collapse: collapse; width: 100%; margin: 0 0 1em; }
+  .md-render th, .md-render td { border: 1px solid #3d444d; padding: 8px 12px; text-align: left; }
+  .md-render th { background: #21262d; font-weight: 600; }
+  .md-render hr { border: none; border-top: 1px solid #3d444d; margin: 1.5em 0; }
+  .md-render img { max-width: 100%; border-radius: 4px; }
+
+  /* Notification toast */
+  .toast { position: fixed; bottom: 24px; right: 324px; background: #21262d; border: 1px solid #3d444d; padding: 10px 18px; font-size: 13px; color: #e6edf3; z-index: 100; display: none; animation: toast-in 0.2s ease; }
+  .toast.ok { border-color: #3fb95033; background: #3fb9500a; color: #3fb950; }
+  .toast.error { border-color: #f8514933; background: #f851490a; color: #f85149; }
+  @keyframes toast-in { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+<div class="layout">
+  <!-- Main -->
+  <div class="main">
+    <h1>IndeX</h1>
+
+    <div class="card">
+      <div class="flex mb-8">
+        <input type="text" id="searchInput" placeholder="Search your codebase..." class="flex-grow" onkeydown="if(event.key==='Enter')search()">
+        <select id="modeSelect" class="flex-shrink">
+          <option value="keyword">Keyword</option>
+          <option value="hybrid">Hybrid</option>
+          <option value="semantic">Semantic</option>
+        </select>
+        <button onclick="search()" class="flex-shrink">Search</button>
+        <span class="filter-toggle" id="filterToggle" onclick="toggleFilters()">▸ Filters</span>
+      </div>
+
+      <!-- Filters (collapsible) -->
+      <div id="filterPanel" style="display:none;">
+        <div class="filter-group">
+          <div class="fg">
+            <label>Source Types</label>
+            <div class="chk-group">
+              <label><input type="checkbox" class="src-type" value="code" checked> code</label>
+              <label><input type="checkbox" class="src-type" value="markdown" checked> markdown</label>
+              <label><input type="checkbox" class="src-type" value="obsidian" checked> obsidian</label>
+              <label><input type="checkbox" class="src-type" value="generic" checked> generic</label>
+            </div>
+          </div>
+          <div class="fg">
+            <label>Tags</label>
+            <input type="text" id="filterTags" placeholder="tag1,tag2" style="width:120px;">
+          </div>
+          <div class="fg">
+            <label>Min Score</label>
+            <input type="number" id="filterMinScore" min="0" max="1" step="0.05" value="0" style="width:60px;">
+          </div>
+          <div class="fg">
+            <label>Results/page</label>
+            <select id="filterTopK" style="width:70px;">
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div id="status-bar">Ready. Index a directory or enter a search query.</div>
+    </div>
+
+    <div id="resultsContainer" style="display:none;">
+      <div id="results"></div>
+      <!-- Pagination -->
+      <div id="pagination" class="pagination" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div>
+      <h3>Index</h3>
+      <div class="flex gap-2" style="margin-bottom:6px;">
+        <input type="text" id="indexPath" value="." placeholder="Path..." style="flex:1;min-width:0;font-size:13px;padding:6px 10px;">
+        <button onclick="runIndex()" style="padding:6px 12px;font-size:12px;">Go</button>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="loadStats()" class="gray" style="flex:1;padding:5px 8px;font-size:11px;">Refresh</button>
+        <button onclick="clearIndex()" class="danger" style="flex:1;padding:5px 8px;font-size:11px;">Clear</button>
+      </div>
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar indeterminate" id="progressBar"></div>
+      </div>
+    </div>
+
+    <div>
+      <h3>Index Status</h3>
+      <div class="info-line">Files <span class="val" id="stat-files">0</span></div>
+      <div class="info-line">Chunks <span class="val" id="stat-chunks">0</span></div>
+      <div class="info-line">Sources <span class="val" id="stat-sources">0</span></div>
+      <div class="info-line">Last <span class="val" id="stat-time">—</span></div>
+    </div>
+
+    <!-- Session / Config Editor -->
+    <div>
+      <h3>Session <button class="refresh-btn" onclick="loadConfig()" title="Reload config">↻</button></h3>
+      <div id="sessionConfig">
+        <div class="info-line">Model <span class="val" id="cfg-model">…</span></div>
+        <div class="info-line">Dimensions <span class="val" id="cfg-dims">…</span></div>
+        <div class="info-line">Provider <span class="val" id="cfg-provider">…</span></div>
+        <div class="info-line">Chunk strategy <span class="val" id="cfg-strategy">…</span></div>
+        <div class="info-line">Max chunk <span class="val" id="cfg-maxchunk">…</span></div>
+        <div class="info-line">Overlap <span class="val" id="cfg-overlap">…</span></div>
+        <div class="info-line">Default mode <span class="val" id="cfg-mode">…</span></div>
+        <div class="info-line">Top-K <span class="val" id="cfg-topk">…</span></div>
+        <div class="info-line">Hybrid weight <span class="val" id="cfg-weight">…</span></div>
+        <div style="margin-top:8px;text-align:right;">
+          <button class="sm gray" onclick="editConfig()">Edit</button>
+        </div>
+      </div>
+      <!-- Inline config edit form (hidden) -->
+      <div id="configEditor" style="display:none;">
+        <div class="info-line">Model <input class="val-edit" id="edit-model" style="width:100%;"></div>
+        <div class="info-line">Strategy <select class="val-edit" id="edit-strategy"><option>heading</option><option>paragraph</option><option>sentence</option><option>overflow</option></select></div>
+        <div class="info-line">Max chunk <input class="val-edit" id="edit-maxchunk" type="number" min="100" max="2000" style="width:60px;"></div>
+        <div class="info-line">Overlap <input class="val-edit" id="edit-overlap" type="number" min="0" max="200" style="width:60px;"></div>
+        <div class="info-line">Default mode <select class="val-edit" id="edit-mode"><option>keyword</option><option>hybrid</option><option>semantic</option></select></div>
+        <div class="info-line">Top-K <input class="val-edit" id="edit-topk" type="number" min="1" max="100" style="width:60px;"></div>
+        <div class="info-line">Hybrid weight <input class="val-edit" id="edit-weight" type="number" min="0" max="1" step="0.05" style="width:60px;"></div>
+        <div class="flex gap-2" style="margin-top:8px;justify-content:flex-end;">
+          <button class="sm gray" onclick="cancelEditConfig()">Cancel</button>
+          <button class="sm" onclick="saveConfig()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h3>System</h3>
+      <div class="info-line">Storage <span class="val">LanceDB</span></div>
+      <div class="info-line">CWD <span class="val" id="server-cwd">—</span></div>
+      <div class="info-line">Server <span class="val" id="server-url">localhost:3000</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script>
+const API = '';
+
+// ── Utilities ────────────────────────────────────────────
+
+function setStatus(msg, type) {
+  const el = document.getElementById('status-bar');
+  el.textContent = msg;
+  el.className = type ? ` ${type}` : '';
+}
+
+function toast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.style.display = 'block';
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => { el.style.display = 'none'; }, 3000);
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function formatTime(iso) {
+  if (!iso || iso === '—') return '—';
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+}
+
+function updateSidebar(stats) {
+  if (!stats) return;
+  document.getElementById('stat-files').textContent = stats.total_files ?? 0;
+  document.getElementById('stat-chunks').textContent = stats.total_chunks ?? 0;
+  document.getElementById('stat-sources').textContent = stats.total_sources ?? 0;
+  document.getElementById('stat-time').textContent = formatTime(stats.last_indexed);
+}
+
+function toggleDetail(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('open');
+}
+
+function setProgress(active) {
+  const wrap = document.getElementById('progressWrap');
+  const bar = document.getElementById('progressBar');
+  if (active) {
+    wrap.classList.add('active');
+    bar.className = 'progress-bar indeterminate';
+  } else {
+    bar.className = 'progress-bar';
+    bar.style.width = '100%';
+    setTimeout(() => { wrap.classList.remove('active'); bar.style.width = '0'; }, 400);
+  }
+}
+
+function highlightCode(code, lang) {
+  try {
+    const r = hljs.highlight(code, { language: lang || 'typescript' });
+    return r.value;
+  } catch { return escapeHtml(code); }
+}
+
+// ── Filters toggle ───────────────────────────────────────
+
+let filtersVisible = false;
+function toggleFilters() {
+  filtersVisible = !filtersVisible;
+  document.getElementById('filterPanel').style.display = filtersVisible ? 'block' : 'none';
+  document.getElementById('filterToggle').textContent = filtersVisible ? '▾ Filters' : '▸ Filters';
+}
+
+// ── Config (Session) ─────────────────────────────────────
+
+let currentConfig = null;
+
+async function loadConfig() {
+  try {
+    const res = await fetch(`${API}/api/config`);
+    const data = await res.json();
+    if (data.config) currentConfig = data.config;
+    renderConfig(currentConfig);
+  } catch {}
+}
+
+function renderConfig(cfg) {
+  if (!cfg) return;
+  const m = cfg.models?.[0] || {};
+  document.getElementById('cfg-model').textContent = m.name || '—';
+  document.getElementById('cfg-dims').textContent = m.dimensions ?? '—';
+  document.getElementById('cfg-provider').textContent = m.provider || '—';
+  document.getElementById('cfg-strategy').textContent = cfg.chunking?.default_strategy || '—';
+  document.getElementById('cfg-maxchunk').textContent = cfg.chunking?.max_chunk_size ?? '—';
+  document.getElementById('cfg-overlap').textContent = cfg.chunking?.overlap ?? '—';
+  document.getElementById('cfg-mode').textContent = cfg.search?.default_mode || '—';
+  document.getElementById('cfg-topk').textContent = cfg.search?.top_k ?? '—';
+  document.getElementById('cfg-weight').textContent = cfg.search?.hybrid_weight?.toFixed(2) ?? '—';
+}
+
+function editConfig() {
+  if (!currentConfig) return;
+  const m = currentConfig.models?.[0] || {};
+  document.getElementById('edit-model').value = m.name || '';
+  document.getElementById('edit-strategy').value = currentConfig.chunking?.default_strategy || 'heading';
+  document.getElementById('edit-maxchunk').value = currentConfig.chunking?.max_chunk_size ?? 500;
+  document.getElementById('edit-overlap').value = currentConfig.chunking?.overlap ?? 32;
+  document.getElementById('edit-mode').value = currentConfig.search?.default_mode || 'hybrid';
+  document.getElementById('edit-topk').value = currentConfig.search?.top_k ?? 10;
+  document.getElementById('edit-weight').value = currentConfig.search?.hybrid_weight ?? 0.7;
+  document.getElementById('sessionConfig').style.display = 'none';
+  document.getElementById('configEditor').style.display = 'block';
+}
+
+function cancelEditConfig() {
+  document.getElementById('sessionConfig').style.display = 'block';
+  document.getElementById('configEditor').style.display = 'none';
+}
+
+async function saveConfig() {
+  const patch = {
+    models: [{ name: document.getElementById('edit-model').value, dimensions: currentConfig.models?.[0]?.dimensions ?? 384, provider: currentConfig.models?.[0]?.provider ?? 'ollama' }],
+    chunking: {
+      default_strategy: document.getElementById('edit-strategy').value,
+      max_chunk_size: parseInt(document.getElementById('edit-maxchunk').value) || 500,
+      overlap: parseInt(document.getElementById('edit-overlap').value) || 32,
+    },
+    search: {
+      default_mode: document.getElementById('edit-mode').value,
+      top_k: parseInt(document.getElementById('edit-topk').value) || 10,
+      hybrid_weight: parseFloat(document.getElementById('edit-weight').value) || 0.7,
+    },
+  };
+  try {
+    const res = await fetch(`${API}/api/config`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const data = await res.json();
+    if (data.config) currentConfig = data.config;
+    renderConfig(currentConfig);
+    toast('Config saved', 'ok');
+  } catch (err) {
+    toast('Error saving config: ' + err.message, 'error');
+  }
+  document.getElementById('sessionConfig').style.display = 'block';
+  document.getElementById('configEditor').style.display = 'none';
+}
+
+// ── Markdown renderer ────────────────────────────────────
+
+marked.setOptions({
+  highlight: function(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      try { return hljs.highlight(code, { language: lang }).value; } catch {}
+    }
+    return highlightCode(code, lang);
+  },
+  breaks: true,
+  gfm: true,
+});
+
+function isMarkdown(source) {
+  return source.type === 'markdown' || source.type === 'obsidian'
+      || source.metadata?.kind === 'markdown' || source.metadata?.kind === 'obsidian';
+}
+
+function renderPreview(source) {
+  const raw = source.content ?? '';
+  if (!raw) return '';
+  if (isMarkdown(source)) {
+    try {
+      const short = raw.length > 300 ? raw.slice(0, 300) + ' …' : raw;
+      return marked.parse(short);
+    } catch {
+      return escapeHtml(raw.slice(0, 300));
+    }
+  }
+  return escapeHtml(raw.slice(0, 300));
+}
+
+function renderContent(source) {
+  const content = source.content ?? '';
+  if (!content) return '';
+  if (isMarkdown(source)) {
+    return `<div class="section-label">Rendered</div>
+            <div class="md-render">${marked.parse(content)}</div>
+            <div class="section-label">Source (${content.length} chars)</div>
+            <pre><code class="language-markdown">${escapeHtml(content)}</code></pre>`;
+  }
+  const lang = source.metadata?.language === 'typescript' ? 'typescript'
+             : source.metadata?.language === 'javascript' ? 'javascript'
+             : 'plaintext';
+  return `<div class="section-label">Content (${content.length} chars)</div>
+          <pre><code class="language-${lang}">${escapeHtml(content)}</code></pre>`;
+}
+
+// ── All chunks viewer ────────────────────────────────────
+
+async function toggleChunks(index, sourceId) {
+  const container = document.getElementById('chunks-' + index);
+  if (!container || !sourceId) return;
+  const toggler = container.previousElementSibling.querySelector('.chunks-toggle');
+
+  if (container.dataset.loaded === 'true') {
+    container.style.display = container.style.display === 'none' ? 'block' : 'none';
+    toggler.innerHTML = container.style.display === 'none'
+      ? '▸ All chunks (' + (container.dataset.total || '?') + ')'
+      : '▾ All chunks (' + (container.dataset.total || '?') + ')';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/source?source_id=' + encodeURIComponent(sourceId));
+    const data = await res.json();
+    if (data.error) { container.innerHTML = '<span style="color:#f85149;font-size:12px;">' + escapeHtml(data.error) + '</span>'; return; }
+    if (!data.chunks || data.chunks.length === 0) { container.innerHTML = '<span style="color:#9198a1;font-size:12px;">No chunks found.</span>'; return; }
+
+    container.dataset.loaded = 'true';
+    container.dataset.total = data.total;
+    container.style.display = 'block';
+    toggler.innerHTML = '▾ All chunks (' + data.total + ')';
+
+    container.innerHTML = data.chunks.map(function(ch, ci) {
+      const preview = (ch.content || '').slice(0, 120);
+      const full = (ch.content || '');
+      const isMd = ch.type === 'markdown' || ch.type === 'obsidian';
+      const fullRendered = isMd
+        ? '<div class="md-render" style="margin:0;">' + marked.parse(full) + '</div>'
+        : '<pre>' + escapeHtml(full) + '</pre>';
+      return '<div class="chunk-item" onclick="this.querySelector(\'.chunk-full\').classList.toggle(\'open\')">' +
+        '<div class="chunk-hdr">' +
+          '<span class="chunk-num">Chunk ' + (ch.chunk_index ?? ci) + '/' + (ch.total_chunks ?? '?') + '</span>' +
+          '<span>' + escapeHtml(ch.type || '') + (ch.embeddings && ch.embeddings.length > 0 ? ' · emb' : '') + '</span>' +
+        '</div>' +
+        '<div class="chunk-preview">' + escapeHtml(preview) + '</div>' +
+        '<div class="chunk-full">' + fullRendered + '</div>' +
+      '</div>';
+    }).join('');
+  } catch (err) {
+    container.innerHTML = '<span style="color:#f85149;font-size:12px;">Error: ' + escapeHtml(err.message) + '</span>';
+  }
+}
+
+// ── Search with Pagination ───────────────────────────────
+
+let searchState = { q: '', mode: 'keyword', top_k: 20, tags: '', source_types: '', min_score: 0, total: 0, offset: 0 };
+
+function getFilterParams() {
+  const types = Array.from(document.querySelectorAll('.src-type:checked')).map(el => el.value).join(',');
+  return {
+    source_types: types || undefined,
+    tags: document.getElementById('filterTags').value || undefined,
+    min_score: parseFloat(document.getElementById('filterMinScore').value) || 0,
+    top_k: parseInt(document.getElementById('filterTopK').value) || 20,
+  };
+}
+
+async function search(offset) {
+  const q = document.getElementById('searchInput').value;
+  const mode = document.getElementById('modeSelect').value;
+  const filters = getFilterParams();
+  const container = document.getElementById('resultsContainer');
+  const resultsDiv = document.getElementById('results');
+  const paginationEl = document.getElementById('pagination');
+
+  if (!q) { setStatus('Enter a search query'); return; }
+
+  offset = offset || 0;
+  searchState = { ...searchState, q, mode, offset: offset || 0, ...filters };
+
+  setStatus('Searching...');
+  container.style.display = 'none';
+  paginationEl.style.display = 'none';
+
+  const params = new URLSearchParams({
+    q,
+    mode,
+    top_k: filters.top_k,
+    offset: String(offset),
+    limit: String(filters.top_k),
+  });
+  if (filters.source_types) params.set('source_types', filters.source_types);
+  if (filters.tags) params.set('tags', filters.tags);
+  if (filters.min_score > 0) params.set('min_score', String(filters.min_score));
+
+  try {
+    const res = await fetch(`${API}/api/search?${params}`);
+    const data = await res.json();
+    if (data.error) { setStatus(data.error, 'error'); return; }
+    if (data.info) { setStatus(data.info, 'error'); return; }
+
+    searchState.total = data.total || 0;
+
+    if (data.results.length === 0) {
+      setStatus('No results found.');
+      resultsDiv.innerHTML = '';
+      container.style.display = 'block';
+      return;
+    }
+
+    resultsDiv.innerHTML = data.results.map((r, i) => {
+      const s = r.source ?? {};
+      const meta = s.metadata ?? {};
+      const globalIdx = offset + i;
+      const mtClass = r.match_type === 'keyword' ? 'keyword' : r.match_type === 'semantic' ? 'semantic' : 'hybrid';
+      return `<div class="card" style="padding:0;">
+        <div class="result" onclick="toggleDetail('detail-${globalIdx}')">
+          <div class="flex" style="justify-content:space-between;">
+            <span class="path">${escapeHtml(s.path ?? 'unknown')}</span>
+            <span class="flex gap-2 flex-shrink">
+              <span class="match-type ${mtClass}">${r.match_type}</span>
+              <span class="score">${r.score?.toFixed(3) ?? 0}</span>
+            </span>
+          </div>
+          <div class="preview">${renderPreview(s)}</div>
+          <div class="meta-tags">
+            <span class="tag type">${s.type ?? 'unknown'}</span>
+            ${(s.tags ?? []).map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}
+            ${meta.language && meta.language !== s.type ? `<span class="tag">${escapeHtml(meta.language)}</span>` : ''}
+          </div>
+        </div>
+        <div class="detail" id="detail-${globalIdx}">
+          <div class="section-label">Source</div>
+          <div class="detail-grid">
+            <div class="kv"><span class="k">Path</span><span class="v">${escapeHtml(s.path ?? '')}</span></div>
+            <div class="kv"><span class="k">Type</span><span class="v">${s.type ?? ''}</span></div>
+            <div class="kv"><span class="k">Chunk</span><span class="v">${s.chunk_index ?? 0}/${s.total_chunks ?? 1}</span></div>
+            <div class="kv"><span class="k">Score</span><span class="v">${r.score?.toFixed(4) ?? 0}</span></div>
+            <div class="kv"><span class="k">ID</span><span class="v" style="font-size:10px;">${escapeHtml((s.id ?? '').slice(0, 16))}…</span></div>
+            <div class="kv"><span class="k">Source ID</span><span class="v" style="font-size:10px;">${escapeHtml((s.source_id ?? '').slice(0, 16))}…</span></div>
+          </div>
+
+          ${meta.ast ? `
+          <div class="section-label">AST — ${meta.ast.symbols?.length ?? 0} symbols, ${meta.ast.imports?.length ?? 0} imports</div>
+          <div class="ast-block">
+            ${(meta.ast.symbols ?? []).slice(0, 15).map(s => `<div class="ast-line"><span class="hl2">${escapeHtml(s.kind)}</span> ${escapeHtml(s.name)} <span style="color:#484f58;">line ${s.line}</span></div>`).join('')}
+            ${(meta.ast.symbols?.length ?? 0) > 15 ? `<div class="ast-line" style="color:#484f58;">… and ${meta.ast.symbols.length - 15} more</div>` : ''}
+            ${(meta.ast.imports ?? []).length > 0 ? `<div style="border-top:1px solid #21262d;margin:6px 0 4px;"></div>` : ''}
+            ${(meta.ast.imports ?? []).slice(0, 8).map(i => `<div class="ast-line"><span style="color:#9198a1;">import</span> <span class="hl">${escapeHtml(i.specifiers.join(', '))}</span> <span style="color:#484f58;">from</span> ${escapeHtml(i.source)}</div>`).join('')}
+            ${(meta.ast.imports?.length ?? 0) > 8 ? `<div class="ast-line" style="color:#484f58;">… and ${meta.ast.imports.length - 8} more</div>` : ''}
+          </div>` : ''}
+
+          <div class="section-label">Metadata</div>
+          <div class="detail-grid">
+            ${Object.entries(meta).filter(([k]) => k !== 'kind' && k !== 'ast').map(([k, v]) =>
+              `<div class="kv"><span class="k">${escapeHtml(k)}</span><span class="v">${escapeHtml(typeof v === 'object' ? JSON.stringify(v).slice(0, 120) : String(v))}</span></div>`
+            ).join('')}
+            <div class="kv"><span class="k">Embeds</span><span class="v">${(s.embeddings ?? []).length > 0 ? (s.embeddings ?? []).length + ' dims' : 'none'}</span></div>
+          </div>
+
+          ${renderContent(s)}
+          <div class="section-label" style="margin-top:4px;">
+            <span class="chunks-toggle" onclick="toggleChunks('${globalIdx}', '${escapeHtml(s.source_id ?? '')}')" style="cursor:pointer;color:#58a6ff;font-size:12px;">
+              ▸ All chunks (${s.total_chunks ?? 1})
+            </span>
+          </div>
+          <div class="chunks-container" id="chunks-${globalIdx}" style="display:none;"></div>
+        </div>
+      </div>`;
+    }).join('');
+
+    container.style.display = 'block';
+
+    // Pagination
+    const total = data.total || data.results.length;
+    const pageSize = filters.top_k;
+    const currentPage = Math.floor(offset / pageSize) + 1;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+    if (total > pageSize) {
+      paginationEl.style.display = 'flex';
+      paginationEl.innerHTML = `
+        <button class="page-btn" onclick="search(${Math.max(0, offset - pageSize)})" ${offset <= 0 ? 'disabled' : ''}>← Prev</button>
+        <span class="page-info">Page ${currentPage} of ${totalPages} · ${total} results</span>
+        <button class="page-btn" onclick="search(${offset + pageSize})" ${offset + pageSize >= total ? 'disabled' : ''}>Next →</button>
+        <span class="page-size">${pageSize}/page</span>
+      `;
+    } else {
+      paginationEl.style.display = 'none';
+    }
+
+    setStatus(`${total} results`, 'ok');
+    document.querySelectorAll('pre code').forEach(b => hljs.highlightElement(b));
+  } catch (err) {
+    setStatus(`Error: ${err.message}`, 'error');
+  }
+}
+
+// ── Index ────────────────────────────────────────────────
+
+async function runIndex() {
+  const path = document.getElementById('indexPath').value;
+  setProgress(true);
+  setStatus(`Indexing ${path}...`);
+  try {
+    const res = await fetch(`${API}/api/index`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (data.stats) updateSidebar(data.stats);
+    setStatus(data.status === 'ok' ? data.message : `Error: ${data.error}`, data.status === 'ok' ? 'ok' : 'error');
+  } catch (err) {
+    setStatus(`Error: ${err.message}`, 'error');
+  }
+  setProgress(false);
+}
+
+// ── Clear ────────────────────────────────────────────────
+
+async function clearIndex() {
+  if (!confirm('Clear the entire index? This cannot be undone.')) return;
+  setProgress(true);
+  setStatus('Clearing index...');
+  try {
+    const res = await fetch(`${API}/api/index`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      updateSidebar({ total_files: 0, total_chunks: 0, total_sources: 0, last_indexed: '-' });
+      document.getElementById('resultsContainer').style.display = 'none';
+    }
+    setStatus(data.message ?? 'Index cleared', 'ok');
+  } catch (err) {
+    setStatus(`Error: ${err.message}`, 'error');
+  }
+  setProgress(false);
+}
+
+// ── Stats ────────────────────────────────────────────────
+
+async function loadStats() {
+  try {
+    const res = await fetch(`${API}/api/stats`);
+    const data = await res.json();
+    if (data.stats) updateSidebar(data.stats);
+  } catch {}
+}
+
+// ── Init ─────────────────────────────────────────────────
+
+setTimeout(() => {
+  loadStats();
+  loadConfig();
+  // Try to get CWD
+  fetch(`${API}/api/config`).then(r => r.json()).then(d => {
+    if (d.config?.universal_model) {
+      document.getElementById('server-cwd').textContent = window.location.hostname + ':3000';
+    }
+  }).catch(() => {});
+}, 500);
+</script>
+</body>
+</html>

@@ -85,6 +85,8 @@ export interface AppUseCases {
   embed: EmbedUseCase;
   watch: WatchUseCase;
   del: DeleteUseCase;
+  /** Current application config (live value, settable). */
+  config: Config;
 }
 
 export interface CreateAppOptions {
@@ -96,6 +98,10 @@ export interface CreateAppOptions {
   logger?: Logger;
   /** When true, uses SilentLogger and MockSourceRepository. */
   testMode?: boolean;
+  /** Embedder for search queries (default: OllamaEmbedder from first configured model). */
+  searchEmbedder?: import("./domain/systems/EmbeddingSystem").Embedder;
+  /** Enable pretty-printed (pino-pretty) terminal output. */
+  pretty?: boolean;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -105,10 +111,22 @@ export interface CreateAppOptions {
  */
 function createFileFilter(config: Config): FileFilter {
   const extList = [".ts", ".tsx", ".js", ".jsx", ".md", ".json"];
+  const exclude = config.indexing?.exclude ?? [];
+  const include = config.indexing?.include;
   return {
     formats: extList,
-    shouldInclude: (path: string) =>
-      extList.some((ext) => path.endsWith(ext)),
+    shouldInclude: (path: string) => {
+      const normalised = path.replace(/\\/g, "/");
+      // Exclude patterns (substring match)
+      for (const pat of exclude) {
+        if (normalised.includes(pat)) return false;
+      }
+      // Include patterns (if specified, path must match at least one)
+      if (include && include.length > 0) {
+        return include.some((pat) => normalised.includes(pat));
+      }
+      return extList.some((ext) => path.endsWith(ext));
+    },
   };
 }
 
@@ -132,7 +150,7 @@ export function createApp(options?: CreateAppOptions): AppUseCases {
   const logger: Logger =
     options?.logger ?? options?.testMode
       ? new SilentLogger()
-      : new PinoLogger({ level: "info" });
+      : new PinoLogger({ level: "info", pretty: options?.pretty ?? false });
 
   // 3. Hasher
   const hasher = new BLAKE3Hasher();
@@ -150,6 +168,7 @@ export function createApp(options?: CreateAppOptions): AppUseCases {
   const chunkerFactory = new ChunkerFactory(
     config.chunking.max_chunk_size,
     tokenEstimator,
+    config.chunking.overlap,
   );
   const strategies = [config.chunking.default_strategy, "paragraph", "sentence", "overflow"];
   const chunkerPipeline: ChunkerPipeline = chunkerFactory.createPipeline(strategies);
@@ -177,7 +196,7 @@ export function createApp(options?: CreateAppOptions): AppUseCases {
       modelCfg.baseUrl ?? "http://localhost:11434",
     );
     const cached = new CachedEmbedder(baseEmbedder, cache, { hash: (t: string) => t.length.toString() });
-    embedderRegistry.register(modelCfg.name, cached, 10);
+    embedderRegistry.register("*", cached, 10);
   }
 
   // 9. Source repository
@@ -203,10 +222,11 @@ export function createApp(options?: CreateAppOptions): AppUseCases {
   );
 
   const searchEmbedder =
-    embedderRegistry.getEmbedder(config.universal_model) ??
+    options?.searchEmbedder ??
     new OllamaEmbedder(
-      config.models[0]?.name ?? "nomic-embed-text",
-      config.models[0]?.dimensions ?? 768,
+      config.models[0]!.name,
+      config.models[0]!.dimensions,
+      config.models[0]!.baseUrl ?? "http://localhost:11434",
     );
 
   const searchService = new SearchService(searchEmbedder, repo, {
@@ -275,5 +295,5 @@ export function createApp(options?: CreateAppOptions): AppUseCases {
 
   const del = new DeleteUseCase(repo);
 
-  return { index, search, pack, chunk, embed, watch, del };
+  return { index, search, pack, chunk, embed, watch, del, config };
 }

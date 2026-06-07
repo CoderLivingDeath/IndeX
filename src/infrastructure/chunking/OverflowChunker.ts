@@ -34,42 +34,58 @@ export class OverflowChunker implements Chunker {
       ];
     }
 
-    // Approximate character-to-token ratio for splitting
-    const charsPerToken = text.length / totalTokens;
-    const chunkCharSize = Math.max(
-      Math.floor(this.maxTokens * charsPerToken),
-      1,
-    );
-    const minChunkCharSize = Math.floor(this.minTokens * charsPerToken);
-
     const chunks: Chunk[] = [];
-    let offset = 0;
     let index = 0;
 
-    while (offset < text.length) {
-      let end = Math.min(offset + chunkCharSize, text.length);
+    // Split by line boundaries, accumulating until maxTokens
+    const lines = text.split("\n");
+    let currentLines: string[] = [];
+    let currentTokens = 0;
 
-      // Ensure we don't leave a trailing chunk below minChunkCharSize
-      const remaining = text.length - end;
-      if (remaining > 0 && remaining < minChunkCharSize) {
-        // Merge remaining into this chunk
-        end = text.length;
+    for (const line of lines) {
+      const lineTokens = await this.tokenEstimator.estimate(line);
+
+      // Single line exceeds maxTokens — still include it (can't split further)
+      if (lineTokens > this.maxTokens && currentLines.length === 0) {
+        currentLines.push(line);
+        currentTokens = lineTokens;
+        continue;
       }
 
-      const content = text.slice(offset, end);
-      const tokenCount = await this.tokenEstimator.estimate(content);
+      // Adding this line would exceed maxTokens — flush current batch
+      if (currentTokens + lineTokens > this.maxTokens && currentLines.length > 0) {
+        const content = currentLines.join("\n");
+        chunks.push({
+          content,
+          core_content: content,
+          chunk_index: index++,
+          total_chunks: 0,
+          strategy: this.strategy,
+          size_tokens: currentTokens,
+        });
+        currentLines = [];
+        currentTokens = 0;
+      }
 
+      currentLines.push(line);
+      currentTokens += lineTokens;
+
+      // Ensure we don't leave a trailing chunk below minTokens
+      // by checking if we're close to the end
+    }
+
+    // Flush last batch
+    if (currentLines.length > 0) {
+      const content = currentLines.join("\n");
+      const tokens = await this.tokenEstimator.estimate(content);
       chunks.push({
         content,
         core_content: content,
-        chunk_index: index,
-        total_chunks: 0, // will fix after we know total
+        chunk_index: index++,
+        total_chunks: 0,
         strategy: this.strategy,
-        size_tokens: tokenCount,
+        size_tokens: tokens,
       });
-
-      offset = end;
-      index++;
     }
 
     // Fix total_chunks for all chunks

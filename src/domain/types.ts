@@ -18,6 +18,11 @@ export type SourceMetadata =
       packageName?: string;
       complexity?: { lines: number; functions: number; classes: number };
       topLevelDeclarations?: string[];
+      ast?: {
+        symbols: Array<{ kind: string; name: string; line: number }>;
+        imports: Array<{ source: string; specifiers: string[] }>;
+        exports: Array<{ name: string; kind: string }>;
+      };
     }
   | { kind: "markdown"; heading?: string; section?: string; wordCount?: number }
   | { kind: "obsidian"; tags: string[]; links: string[]; frontmatter?: Record<string, unknown> }

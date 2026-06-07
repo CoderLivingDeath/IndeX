@@ -6,7 +6,8 @@ import type { Chunker } from "../systems/ChunkingSystem";
 import type { EmbedderRegistry } from "../systems/EmbeddingSystem";
 import type { SourceRepository } from "../ports/SourceRepository";
 import type { Hasher } from "../systems/HashingSystem";
-import type { SourceData } from "../types";
+import type { SourceData, SourceMetadata } from "../types";
+import type { FileIndex } from "../ast";
 
 export interface DiffIndexResult {
   indexed: number;
@@ -101,6 +102,8 @@ export class DiffIndexingService {
 
       const now = new Date().toISOString();
 
+      const metaWithAst = enrichMetadata(parsed.metadata, parsed.fileIndex);
+
       batch.push({
         id: crypto.randomUUID(),
         chunk_id: crypto.randomUUID(),
@@ -115,7 +118,7 @@ export class DiffIndexingService {
         chunk_index: chunk.chunk_index,
         total_chunks: chunk.total_chunks,
         embeddings,
-        metadata: parsed.metadata,
+        metadata: metaWithAst,
         created_at: now,
         updated_at: now,
       });
@@ -145,4 +148,22 @@ export class DiffIndexingService {
     }
     return results;
   }
+}
+
+/**
+ * Enrich metadata with AST data when fileIndex is available.
+ */
+function enrichMetadata(
+  meta: SourceMetadata,
+  fileIndex?: FileIndex,
+): SourceMetadata {
+  if (!fileIndex || meta.kind !== "code") return meta;
+  return {
+    ...meta,
+    ast: {
+      symbols: fileIndex.symbols.map((s) => ({ kind: s.kind, name: s.name, line: s.startPosition.line })),
+      imports: fileIndex.imports.map((i) => ({ source: i.source, specifiers: i.specifiers })),
+      exports: fileIndex.exports.map((e) => ({ name: e.name, kind: e.kind })),
+    },
+  };
 }

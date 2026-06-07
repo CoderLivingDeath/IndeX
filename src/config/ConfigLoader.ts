@@ -46,6 +46,12 @@ const ConfigSchema = z
         hybrid_weight: z.number().min(0).max(1).default(0.7),
       })
       .default({}),
+    indexing: z
+      .object({
+        include: z.array(z.string()).optional(),
+        exclude: z.array(z.string()).default(["node_modules", ".git", ".tmp", "dist", "build", ".opencode"]),
+      })
+      .default({}),
   })
   .refine(
     (c) => c.models.some((m) => m.name === c.universal_model),
@@ -59,8 +65,8 @@ export type Config = z.infer<typeof ConfigSchema>;
 // ── Defaults ──────────────────────────────────────────────────────
 
 const defaultConfig: Config = {
-  models: [{ name: "nomic-embed-text", dimensions: 768, provider: "ollama" }],
-  universal_model: "nomic-embed-text",
+  models: [{ name: "qllama/multilingual-e5-small", dimensions: 384, provider: "ollama" }],
+  universal_model: "qllama/multilingual-e5-small",
   embedder: { batch_size: 10, cache_size: 100 },
   chunking: {
     default_strategy: "heading",
@@ -71,6 +77,9 @@ const defaultConfig: Config = {
     default_mode: "hybrid",
     top_k: 10,
     hybrid_weight: 0.7,
+  },
+  indexing: {
+    exclude: ["node_modules", ".git", ".tmp", "dist", "build", ".opencode"],
   },
 };
 

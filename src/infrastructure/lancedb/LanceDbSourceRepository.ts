@@ -41,6 +41,19 @@ export class LanceDbSourceRepository implements SourceRepository {
     if (!this.connected) await this.connect();
   }
 
+  /** Rebuild the FTS inverted index on the content column. */
+  private async ensureFtsIndex(table: Table): Promise<void> {
+    try {
+      await table.createIndex("content", {
+        config: lancedb.Index.fts({ withPosition: true }),
+        replace: true,
+        waitTimeoutSeconds: 30,
+      });
+    } catch {
+      // FTS index may not be supported in memory:// mode
+    }
+  }
+
   /** Open the sources table. Returns null if not yet created. */
   private async getSourcesTable(): Promise<Table | null> {
     await this.ensureConnected();
@@ -89,17 +102,6 @@ export class LanceDbSourceRepository implements SourceRepository {
       existOk: false,
       schema,
     });
-
-    // Create FTS (INVERTED) index on the content column
-    try {
-      await this.sourcesTable.createIndex("content", {
-        config: lancedb.Index.fts({ withPosition: true }),
-        replace: true,
-        waitTimeoutSeconds: 30,
-      });
-    } catch {
-      // FTS index may not be supported in memory:// mode
-    }
 
     return this.sourcesTable;
   }
@@ -155,6 +157,7 @@ export class LanceDbSourceRepository implements SourceRepository {
     }
 
     await table.add([record]);
+    await this.ensureFtsIndex(table);
   }
 
   async upsertBatch(data: SourceData[]): Promise<void> {
@@ -172,6 +175,7 @@ export class LanceDbSourceRepository implements SourceRepository {
     }
 
     await table.add(records);
+    await this.ensureFtsIndex(table);
   }
 
   async getById(id: string): Promise<SourceData | null> {
