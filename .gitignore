@@ -6,6 +6,7 @@ build/
 
 # IndeX data
 .indeX/data/
+.indeX/index.lancedb/
 .indeX/config.json
 
 # Editor
