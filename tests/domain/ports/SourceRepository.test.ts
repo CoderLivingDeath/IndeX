@@ -76,6 +76,7 @@ describe("SourceRepository interface", () => {
         total_chunks: 3,
         total_files: 1,
         total_tokens: 0,
+        total_deduped_chunks: 0,
         last_indexed: "2026-01-01T00:00:00.000Z",
       }),
       upsertFileIndex: async () => {},
@@ -105,6 +106,7 @@ describe("SourceRepository interface", () => {
       total_chunks: 3,
       total_files: 1,
       total_tokens: 0,
+      total_deduped_chunks: 0,
       last_indexed: "2026-01-01T00:00:00.000Z",
     });
     await expect(mock.upsertFileIndex({} as never)).resolves.toBeUndefined();
@@ -136,6 +138,7 @@ describe("SourceRepository interface", () => {
         total_chunks: 0,
         total_files: 0,
         total_tokens: 0,
+        total_deduped_chunks: 0,
         last_indexed: "2026-01-01T00:00:00.000Z",
       }),
       upsertFileIndex: async () => {},

@@ -14,4 +14,8 @@ export class NullEmbedder implements Embedder {
   async embed(_text: string): Promise<Embedding> {
     throw new Error("no embedder available");
   }
+
+  async embedBatch(_texts: string[]): Promise<Embedding[]> {
+    throw new Error("no embedder available");
+  }
 }

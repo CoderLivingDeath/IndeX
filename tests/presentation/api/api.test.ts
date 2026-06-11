@@ -12,7 +12,7 @@ function createMockApp() {
   return {
     index: {
       execute: async (_path: string): Promise<IndexStats> => ({
-        total_sources: 0, total_chunks: 0, total_files: 0, total_tokens: 0, last_indexed: new Date().toISOString(),
+        total_sources: 0, total_chunks: 0, total_files: 0, total_tokens: 0, total_deduped_chunks: 0, last_indexed: new Date().toISOString(),
       }),
     },
     search: {
@@ -23,7 +23,7 @@ function createMockApp() {
     embed: { execute: async () => {} },
     watch: { execute: async () => {}, stop: async () => {} },
     del: {
-      stats: async () => ({ total_sources: 0, total_chunks: 0, total_files: 0, total_tokens: 0, last_indexed: "2026-01-01T00:00:00.000Z" }),
+      stats: async () => ({ total_sources: 0, total_chunks: 0, total_files: 0, total_tokens: 0, total_deduped_chunks: 0, last_indexed: "2026-01-01T00:00:00.000Z" }),
       clear: async () => {},
       getSourceChunks: async () => [],
       getPathChunks: async () => [],

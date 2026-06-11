@@ -6,12 +6,11 @@
 //   source: "files"   →  re-parse files, chunk, then embed and upsert
 // ---------------------------------------------------------------------------
 
-import { readdirSync } from "fs";
-import { join } from "path";
 import type { EmbedSystems } from "./di/Systems";
 import type { SourceData } from "../domain/types";
 import { BLAKE3Hasher } from "../infrastructure/hashing/BLAKE3Hasher";
 import { truncateEmbedContent } from "../domain/services/embedTruncation";
+import { scanDirectory } from "../shared/fileUtils";
 
 /**
  * Options for the EmbedUseCase execution.
@@ -95,7 +94,7 @@ export class EmbedUseCase {
     this.systems.logger.info(`Scanning ${dir} for files to embed`);
 
     const hasher = new BLAKE3Hasher();
-    const allFiles = this.scanDirectory(dir);
+    const allFiles = scanDirectory(dir);
 
     const matched = this.systems.fileFilter
       ? allFiles.filter((f) => this.systems.fileFilter!.shouldInclude(f))
@@ -150,18 +149,4 @@ export class EmbedUseCase {
     this.systems.logger.info(`Embedded and upserted ${batch.length} chunks`);
   }
 
-  /** Recursively collect all file paths under `dir`. */
-  private scanDirectory(dir: string): string[] {
-    const results: string[] = [];
-    const entries = readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        results.push(...this.scanDirectory(fullPath));
-      } else if (entry.isFile()) {
-        results.push(fullPath);
-      }
-    }
-    return results;
-  }
 }

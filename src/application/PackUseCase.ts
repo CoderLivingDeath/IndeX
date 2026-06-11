@@ -7,11 +7,12 @@
 // fenced code blocks.
 // ---------------------------------------------------------------------------
 
-import { readdirSync } from "fs";
-import { join, relative } from "path";
+import { relative } from "path";
 import type { PackSystems } from "./di/Systems";
 import type { PackedContext } from "../domain/systems/ContextPackagingSystem";
 import type { ParsedSource } from "../domain/types";
+import { scanDirectory } from "../shared/fileUtils";
+import { filterByGlob } from "../shared/globMatcher";
 
 // ── Internal types ─────────────────────────────────────────────
 
@@ -35,42 +36,6 @@ export interface PackOptions {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
-
-/**
- * Very simple glob-like matcher.
- *
- * Supported patterns:
- *   - `**\/*.ext`  — any file with extension `.ext` at any depth
- *   - `**\/name`   — any file named `name` at any depth
- *   - `*`          — any filename (no directory separator)
- *
- * Falls back to substring matching for other patterns.
- */
-function matchesGlob(pattern: string, filePath: string): boolean {
-  // Normalise separators
-  const normalised = filePath.replace(/\\/g, "/");
-
-  if (pattern.startsWith("**/")) {
-    const suffix = pattern.slice(3); // e.g. "*.md"
-    if (suffix.includes("*")) {
-      // `**/*.ext` → ends with `.ext`
-      const ext = suffix.slice(1); // ".md"
-      return normalised.endsWith(ext);
-    }
-    // `**/filename` → ends with `/filename`
-    return normalised.endsWith(`/${suffix}`) || normalised.endsWith(suffix);
-  }
-
-  if (pattern === "*") return !filePath.includes("/") && !filePath.includes("\\");
-
-  // Handle `*.ext` patterns (e.g. `*.ts`, `*.md`)
-  if (pattern.startsWith("*.")) {
-    const ext = pattern.slice(1); // ".ts"
-    return normalised.endsWith(ext);
-  }
-
-  return filePath.includes(pattern);
-}
 
 /**
  * Crude token estimate: ~1 token per 4 characters.
@@ -192,25 +157,15 @@ export class PackUseCase {
     this.systems.logger.info(`Packing ${directory}`);
 
     // 1. Recursively scan
-    const allFiles = this.scanDirectory(directory);
+    const allFiles = scanDirectory(directory);
 
     // 2. Apply fileFilter
-    const filtered = allFiles.filter((f) =>
+    let matched = allFiles.filter((f) =>
       this.systems.fileFilter.shouldInclude(f),
     );
 
-    // 3. Apply PackOptions include/exclude
-    let matched = filtered;
-    if (options?.include && options.include.length > 0) {
-      matched = matched.filter((f) =>
-        options.include!.some((pattern) => matchesGlob(pattern, f)),
-      );
-    }
-    if (options?.exclude && options.exclude.length > 0) {
-      matched = matched.filter(
-        (f) => !options.exclude!.some((pattern) => matchesGlob(pattern, f)),
-      );
-    }
+    // 3. Apply PackOptions include/exclude (proper glob matching via micromatch)
+    matched = filterByGlob(matched, options);
 
     // 4. Parse all files into entries (two-pass: first parse all for TOC)
     const entries: FileEntry[] = [];
@@ -300,18 +255,4 @@ export class PackUseCase {
     };
   }
 
-  /** Recursively collect all file paths under `dir`. */
-  private scanDirectory(dir: string): string[] {
-    const results: string[] = [];
-    const entries = readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        results.push(...this.scanDirectory(fullPath));
-      } else if (entry.isFile()) {
-        results.push(fullPath);
-      }
-    }
-    return results;
-  }
 }

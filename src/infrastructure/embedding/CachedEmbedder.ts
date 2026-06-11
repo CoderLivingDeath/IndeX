@@ -35,4 +35,35 @@ export class CachedEmbedder implements Embedder {
     await this.cache.set(key, result);
     return result;
   }
+
+  async embedBatch(texts: string[]): Promise<Embedding[]> {
+    const results: Embedding[] = new Array(texts.length);
+    const missIndices: number[] = [];
+    const missTexts: string[] = [];
+    const keys: string[] = new Array(texts.length);
+
+    for (let i = 0; i < texts.length; i++) {
+      const hash = await this.hasher.hash(texts[i]!);
+      const key = `${this.embedder.model}:${hash}`;
+      keys[i] = key;
+      const cached = await this.cache.get(key);
+      if (cached !== null) {
+        results[i] = cached;
+      } else {
+        missIndices.push(i);
+        missTexts.push(texts[i]!);
+      }
+    }
+
+    if (missTexts.length > 0) {
+      const embeds = await this.embedder.embedBatch(missTexts);
+      for (let j = 0; j < missTexts.length; j++) {
+        const idx = missIndices[j]!;
+        results[idx] = embeds[j]!;
+        await this.cache.set(keys[idx]!, embeds[j]!);
+      }
+    }
+
+    return results;
+  }
 }

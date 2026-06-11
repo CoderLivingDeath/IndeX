@@ -100,7 +100,7 @@ export async function executeCommand(
       const [path] = args;
       if (!path) { console.error("Error: path required"); return; }
       const stats = await app.index.execute(path);
-      console.log(`Indexed ${stats.total_files} files, ${stats.total_chunks} chunks`);
+      console.log(`Indexed ${stats.total_files} files, ${stats.total_chunks} chunks (${stats.total_deduped_chunks} deduped)`);
       break;
     }
     case "search": {
@@ -159,6 +159,7 @@ export async function executeCommand(
   Files:    ${stats.total_files}
   Chunks:   ${stats.total_chunks}
   Tokens:   ${stats.total_tokens}
+  Deduped:  ${stats.total_deduped_chunks}
   Last indexed: ${stats.last_indexed}`);
       break;
     }

@@ -1,5 +1,3 @@
-import { readdirSync } from "fs";
-import { join } from "path";
 import type { FileFilter } from "../ports/FileFilter";
 import type { SourceParserRegistry } from "../ports/SourceParserRegistry";
 import type { Chunker } from "../systems/ChunkingSystem";
@@ -10,6 +8,7 @@ import type { SourceData, SourceMetadata } from "../types";
 import type { FileIndex } from "../ast";
 import { generateAstSummary } from "../ast";
 import { truncateEmbedContent } from "./embedTruncation";
+import { scanDirectory } from "../../shared/fileUtils";
 
 export interface DiffIndexResult {
   indexed: number;
@@ -42,7 +41,7 @@ export class DiffIndexingService {
   ) {}
 
   async diffIndex(directory: string): Promise<DiffIndexResult> {
-    const files = this.scanDirectory(directory);
+    const files = scanDirectory(directory);
     const included = files.filter((f) => this.fileFilter.shouldInclude(f));
 
     let indexed = 0;
@@ -143,20 +142,6 @@ export class DiffIndexingService {
     }
   }
 
-  /** Recursively collect all file paths under `dir`. */
-  private scanDirectory(dir: string): string[] {
-    const results: string[] = [];
-    const entries = readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        results.push(...this.scanDirectory(fullPath));
-      } else if (entry.isFile()) {
-        results.push(fullPath);
-      }
-    }
-    return results;
-  }
 }
 
 /**

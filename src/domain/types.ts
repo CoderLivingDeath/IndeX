@@ -96,5 +96,6 @@ export interface IndexStats {
   total_chunks: number;
   total_files: number;
   total_tokens: number;
+  total_deduped_chunks: number;
   last_indexed: string; // ISO 8601
 }

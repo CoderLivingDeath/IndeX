@@ -128,7 +128,7 @@ export function createServer(app: AppUseCases, hasVectorEmbedder: boolean = fals
       const stats = await app.index.execute(path);
       return c.json({
         status: "ok",
-        message: `Indexed ${stats.total_files} files, ${stats.total_chunks} chunks`,
+        message: `Indexed ${stats.total_files} files, ${stats.total_chunks} chunks (${stats.total_deduped_chunks} deduped)`,
         stats,
       });
     } catch (err: any) {

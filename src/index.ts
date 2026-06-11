@@ -10,6 +10,7 @@ import { loadOrDefault as loadConfig } from "./config/ConfigLoader";
 import type { Config } from "./config/ConfigLoader";
 
 // ── Domain types ────────────────────────────────────────────────────
+import { matchesAny } from "./shared/globMatcher";
 import type { SourceType, SearchQuery } from "./domain/types";
 import type { Chunk } from "./domain/systems/ChunkingSystem";
 import type { ChunkerPipeline } from "./domain/systems/ChunkingSystem";
@@ -116,15 +117,11 @@ function createFileFilter(config: Config): FileFilter {
   return {
     formats: extList,
     shouldInclude: (path: string) => {
-      const normalised = path.replace(/\\/g, "/");
-      // Exclude patterns (match whole path segments only)
-      for (const pat of exclude) {
-        const segments = normalised.split("/");
-        if (segments.some((seg) => seg === pat)) return false;
-      }
-      // Include patterns (if specified, path must match at least one)
+      // Exclude patterns (glob match, e.g. "node_modules/**", ".git/**")
+      if (exclude.length > 0 && matchesAny(exclude, path)) return false;
+      // Include patterns (if specified, path must match at least one glob)
       if (include && include.length > 0) {
-        return include.some((pat) => normalised.includes(pat));
+        return matchesAny(include, path);
       }
       return extList.some((ext) => path.endsWith(ext));
     },

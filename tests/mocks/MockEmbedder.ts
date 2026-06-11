@@ -29,6 +29,14 @@ export class MockEmbedder implements Embedder {
     };
   }
 
+  async embedBatch(texts: string[]): Promise<Embedding[]> {
+    // If customEmbedding is set, return it for every text (for test predictability)
+    if (this._customEmbedding !== null) {
+      return texts.map(() => this._customEmbedding!);
+    }
+    return Promise.all(texts.map((t) => this.embed(t)));
+  }
+
   /** Override the next return value of embed() for testing edge cases. */
   setMockReturnValue(embedding: Embedding): void {
     this._customEmbedding = embedding;

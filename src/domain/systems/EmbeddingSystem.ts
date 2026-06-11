@@ -12,7 +12,10 @@ export interface Embedding {
  * An embedder that converts text into vector embeddings.
  */
 export interface Embedder {
+  /** Embed a single text string. */
   embed(text: string): Promise<Embedding>;
+  /** Embed multiple texts in a single batch (more efficient than separate calls). */
+  embedBatch(texts: string[]): Promise<Embedding[]>;
   readonly model: string;
   readonly dimensions: number;
 }

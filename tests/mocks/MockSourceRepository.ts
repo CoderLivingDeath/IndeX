@@ -157,6 +157,7 @@ export class MockSourceRepository implements SourceRepository {
       total_chunks: this.sources.size,
       total_files: uniquePaths.size,
       total_tokens: 0,
+      total_deduped_chunks: 0,
       last_indexed: this.lastIndexed,
     };
   }

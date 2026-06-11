@@ -44,6 +44,7 @@ export class IndexUseCase {
     await this.systems.repo.setDbMeta("total_files", stats.total_files);
     await this.systems.repo.setDbMeta("total_chunks", stats.total_chunks);
     await this.systems.repo.setDbMeta("total_tokens", stats.total_tokens);
+    await this.systems.repo.setDbMeta("total_deduped_chunks", stats.total_deduped_chunks);
 
     return stats;
   }

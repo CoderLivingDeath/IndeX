@@ -5,10 +5,10 @@
 // through the SourceParserRegistry, and chunks the content via a Chunker.
 // ---------------------------------------------------------------------------
 
-import { readdirSync } from "fs";
-import { join } from "path";
 import type { ChunkSystems } from "./di/Systems";
 import type { Chunk } from "../domain/systems/ChunkingSystem";
+import { scanDirectory } from "../shared/fileUtils";
+import { filterByGlob } from "../shared/globMatcher";
 
 /**
  * Options that control which files are included in chunking.
@@ -18,23 +18,6 @@ export interface ChunkOptions {
   include?: string[];
   /** Glob patterns to exclude (e.g. `["**\/*.test.ts"]`). */
   exclude?: string[];
-}
-
-/**
- * Very simple glob-like matcher — mirrors the one in PackUseCase.
- */
-function matchesGlob(pattern: string, filePath: string): boolean {
-  const normalised = filePath.replace(/\\/g, "/");
-  if (pattern.startsWith("**/")) {
-    const suffix = pattern.slice(3);
-    if (suffix.includes("*")) {
-      const ext = suffix.slice(1);
-      return normalised.endsWith(ext);
-    }
-    return normalised.endsWith(`/${suffix}`) || normalised.endsWith(suffix);
-  }
-  if (pattern === "*") return !filePath.includes("/") && !filePath.includes("\\");
-  return filePath.includes(pattern);
 }
 
 /**
@@ -57,24 +40,15 @@ export class ChunkUseCase {
     this.systems.logger.info(`Chunking ${directory}`);
 
     // 1. Recursively scan
-    const allFiles = this.scanDirectory(directory);
+    const allFiles = scanDirectory(directory);
 
     // 2. Apply fileFilter
     let matched = allFiles.filter((f) =>
       this.systems.fileFilter.shouldInclude(f),
     );
 
-    // 3. Apply PackOptions include/exclude
-    if (options?.include && options.include.length > 0) {
-      matched = matched.filter((f) =>
-        options.include!.some((pattern) => matchesGlob(pattern, f)),
-      );
-    }
-    if (options?.exclude && options.exclude.length > 0) {
-      matched = matched.filter(
-        (f) => !options.exclude!.some((pattern) => matchesGlob(pattern, f)),
-      );
-    }
+    // 3. Apply include/exclude glob patterns (via micromatch)
+    matched = filterByGlob(matched, options);
 
     // 4. Parse and chunk
     const allChunks: Chunk[] = [];
@@ -94,18 +68,4 @@ export class ChunkUseCase {
     return allChunks;
   }
 
-  /** Recursively collect all file paths under `dir`. */
-  private scanDirectory(dir: string): string[] {
-    const results: string[] = [];
-    const entries = readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        results.push(...this.scanDirectory(fullPath));
-      } else if (entry.isFile()) {
-        results.push(fullPath);
-      }
-    }
-    return results;
-  }
 }

@@ -34,4 +34,8 @@ export class LanceDbEmbedder implements Embedder {
       tokens_in: 0,
     };
   }
+
+  async embedBatch(texts: string[]): Promise<Embedding[]> {
+    return Promise.all(texts.map((t) => this.embed(t)));
+  }
 }
