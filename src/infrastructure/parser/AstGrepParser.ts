@@ -15,10 +15,37 @@ import type {
 import { BLAKE3Hasher } from "../hashing/BLAKE3Hasher";
 import { parse, Lang } from "@ast-grep/napi";
 
+// ── Dynamic language registration (C# etc.) ─────────────────────
+
+let csharpRegistered = false;
+
+function ensureCsharpRegistered(): void {
+  if (csharpRegistered) return;
+  try {
+    const { registerDynamicLanguage } = require("@ast-grep/napi") as typeof import("@ast-grep/napi");
+    const csharpLang = require("@ast-grep/lang-csharp") as {
+      libraryPath: string;
+      extensions: string[];
+      languageSymbol?: string;
+      expandoChar?: string;
+    };
+    registerDynamicLanguage({
+      csharp: {
+        libraryPath: csharpLang.libraryPath,
+        extensions: csharpLang.extensions ?? [".cs"],
+      },
+    });
+    csharpRegistered = true;
+  } catch {
+    // C# language support not available — .cs files will fall through
+  }
+}
+
 /**
  * Determine language from file extension.
  */
 function determineLanguage(path: string): string {
+  if (path.endsWith(".cs")) return "csharp";
   if (path.endsWith(".tsx")) return "typescriptreact";
   if (path.endsWith(".ts")) return "typescript";
   if (path.endsWith(".jsx")) return "javascriptreact";
@@ -55,7 +82,7 @@ function getImportSource(node: {
  */
 export class AstGrepParser implements SourceParser {
   readonly type: SourceType = "code";
-  readonly extensions = [".ts", ".tsx", ".js", ".jsx"];
+  readonly extensions = [".ts", ".tsx", ".js", ".jsx", ".cs"];
   private hasher = new BLAKE3Hasher();
 
   supportsFile(path: string): boolean {
@@ -72,7 +99,12 @@ export class AstGrepParser implements SourceParser {
     const exports: Export[] = [];
     const topLevelDeclarations: string[] = [];
 
-    // Parse source code with @ast-grep/napi
+    // Use C# parser for .cs files, TypeScript for everything else
+    if (path.endsWith(".cs")) {
+      return this.parseCSharp(path, content, lines, file_blake3);
+    }
+
+    // Parse source code with @ast-grep/napi (TypeScript/JS)
     const sgRoot = parse(Lang.TypeScript, content);
     const rootChildren = sgRoot.root().children();
 
@@ -363,6 +395,157 @@ export class AstGrepParser implements SourceParser {
       fileIndex,
     };
   }
+
+  // ── C# parser (via registerDynamicLanguage) ────────────────────
+
+  private async parseCSharp(
+    path: string,
+    content: string,
+    lines: string[],
+    file_blake3: string,
+  ): Promise<ParsedSource> {
+    ensureCsharpRegistered();
+
+    const symbols: SymbolDetail[] = [];
+    const imports: Import[] = [];
+    const topLevelDeclarations: string[] = [];
+
+    try {
+      const sgRoot = parse("csharp" as any, content);
+
+      for (const child of sgRoot.root().children()) {
+        const kind = child.kind();
+        const text = child.text();
+        const range = child.range();
+
+        switch (kind) {
+          case "class_declaration": {
+            const name = extractCSharpName(child);
+            if (!name) break;
+            symbols.push({
+              kind: "class",
+              name,
+              signature: "",
+              startPosition: { line: range.start.line + 1, column: range.start.column + 1 },
+              endPosition: { line: range.end.line + 1, column: range.end.column + 1 },
+            });
+            topLevelDeclarations.push(name);
+            break;
+          }
+
+          case "method_declaration": {
+            const name = extractCSharpName(child);
+            if (!name || name === ".ctor") break;
+            const sig = extractSignature(content, range);
+            symbols.push({
+              kind: "function",
+              name,
+              signature: sig,
+              startPosition: { line: range.start.line + 1, column: range.start.column + 1 },
+              endPosition: { line: range.end.line + 1, column: range.end.column + 1 },
+            });
+            break;
+          }
+
+          case "constructor_declaration": {
+            const name = extractCSharpName(child);
+            if (!name) break;
+            symbols.push({
+              kind: "function",
+              name: `${name}.ctor`,
+              signature: extractSignature(content, range),
+              startPosition: { line: range.start.line + 1, column: range.start.column + 1 },
+              endPosition: { line: range.end.line + 1, column: range.end.column + 1 },
+            });
+            break;
+          }
+
+          case "interface_declaration": {
+            const name = extractCSharpName(child);
+            if (!name) break;
+            symbols.push({
+              kind: "interface",
+              name,
+              signature: "",
+              startPosition: { line: range.start.line + 1, column: range.start.column + 1 },
+              endPosition: { line: range.end.line + 1, column: range.end.column + 1 },
+            });
+            topLevelDeclarations.push(name);
+            break;
+          }
+
+          case "struct_declaration": {
+            const name = extractCSharpName(child);
+            if (!name) break;
+            symbols.push({
+              kind: "struct",
+              name,
+              signature: "",
+              startPosition: { line: range.start.line + 1, column: range.start.column + 1 },
+              endPosition: { line: range.end.line + 1, column: range.end.column + 1 },
+            });
+            topLevelDeclarations.push(name);
+            break;
+          }
+
+          case "enum_declaration": {
+            const name = extractCSharpName(child);
+            if (!name) break;
+            symbols.push({
+              kind: "enum",
+              name,
+              signature: "",
+              startPosition: { line: range.start.line + 1, column: range.start.column + 1 },
+              endPosition: { line: range.end.line + 1, column: range.end.column + 1 },
+            });
+            topLevelDeclarations.push(name);
+            break;
+          }
+
+          case "using_directive": {
+            // Extract namespace from `using X.Y.Z;`
+            const ns = text.replace(/^using\s+/, "").replace(/;\s*$/, "").trim();
+            if (ns) {
+              imports.push({ source: ns, specifiers: ["*"], kind: "namespace" });
+            }
+            break;
+          }
+        }
+      }
+    } catch {
+      // C# parsing failed — return content without AST
+    }
+
+    const functionCount = symbols.filter((s) => s.kind === "function").length;
+    const classCount = symbols.filter((s) => s.kind === "class" || s.kind === "struct").length;
+
+    const fileIndex: FileIndex = {
+      path,
+      file_blake3,
+      language: "csharp",
+      imports,
+      exports: [],
+      symbols,
+      relationships: [],
+      last_parsed: new Date().toISOString(),
+    };
+
+    return {
+      type: "code",
+      path,
+      content,
+      tags: [],
+      metadata: {
+        kind: "code" as const,
+        language: "csharp",
+        complexity: { lines: lines.length, functions: functionCount, classes: classCount },
+        topLevelDeclarations,
+      },
+      file_blake3,
+      last_parsed: new Date().toISOString(),
+      fileIndex,
+    };
+  }
 }
 
 // ---- Helper functions -------------------------------------------------------
@@ -403,4 +586,18 @@ function extractSignature(content: string, range: { start: { index: number }; en
   const fnText = content.slice(range.start.index, range.end.index);
   const parenMatch = fnText.match(/\([^)]*\)/);
   return parenMatch ? parenMatch[0] : "";
+}
+
+/**
+ * Extract the name from a C# declaration node by looking for the first
+ * `identifier` or `type_identifier` child.
+ */
+function extractCSharpName(node: {
+  children(): { kind(): string; text(): string }[];
+}): string | null {
+  for (const c of node.children()) {
+    const k = c.kind();
+    if (k === "identifier" || k === "type_identifier") return c.text();
+  }
+  return null;
 }

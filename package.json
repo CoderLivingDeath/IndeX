@@ -12,6 +12,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@ast-grep/lang-csharp": "^0.0.6",
     "@ast-grep/napi": "^0.43.0",
     "@lancedb/lancedb": "^0.30.0",
     "chokidar": "^5.0.0",

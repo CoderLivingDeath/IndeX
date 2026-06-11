@@ -110,7 +110,7 @@ export interface CreateAppOptions {
  * FileFilter that includes files matching the configured formats/exclude patterns.
  */
 function createFileFilter(config: Config): FileFilter {
-  const extList = [".ts", ".tsx", ".js", ".jsx", ".md", ".json"];
+  const extList = [".ts", ".tsx", ".js", ".jsx", ".md", ".json", ".cs"];
   const exclude = config.indexing?.exclude ?? [];
   const include = config.indexing?.include;
   return {
