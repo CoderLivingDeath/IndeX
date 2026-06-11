@@ -10,6 +10,8 @@ import { readdirSync } from "fs";
 import { join } from "path";
 import type { EmbedSystems } from "./di/Systems";
 import type { SourceData } from "../domain/types";
+import { BLAKE3Hasher } from "../infrastructure/hashing/BLAKE3Hasher";
+import { truncateEmbedContent } from "../domain/services/embedTruncation";
 
 /**
  * Options for the EmbedUseCase execution.
@@ -69,7 +71,8 @@ export class EmbedUseCase {
         const embedder = this.systems.embedderRegistry.getEmbedder(source.type);
         if (!embedder) continue;
 
-        const result = await embedder.embed(source.content);
+        const embedContent = await truncateEmbedContent("", source.content);
+        const result = await embedder.embed(embedContent);
         source.embeddings = result.vector;
         source.updated_at = new Date().toISOString();
         batch.push(source);
@@ -91,6 +94,7 @@ export class EmbedUseCase {
     const dir = directory ?? ".";
     this.systems.logger.info(`Scanning ${dir} for files to embed`);
 
+    const hasher = new BLAKE3Hasher();
     const allFiles = this.scanDirectory(dir);
 
     const matched = this.systems.fileFilter
@@ -113,7 +117,8 @@ export class EmbedUseCase {
         let embeddings: number[] = [];
 
         if (embedder) {
-          const result = await embedder.embed(chunk.core_content);
+          const embedContent = await truncateEmbedContent("", chunk.core_content);
+          const result = await embedder.embed(embedContent);
           embeddings = result.vector;
         }
 
@@ -127,7 +132,7 @@ export class EmbedUseCase {
           tags: parsed.tags,
           path: filePath,
           file_blake3: parsed.file_blake3,
-          semantic_blake3: `embed-${crypto.randomUUID()}`,
+          semantic_blake3: await hasher.hash(chunk.core_content),
           chunk_index: chunk.chunk_index,
           total_chunks: chunk.total_chunks,
           embeddings,

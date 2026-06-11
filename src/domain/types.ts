@@ -56,7 +56,7 @@ export interface SourceData {
  */
 export interface SearchQuery {
   text: string;
-  mode: "semantic" | "keyword" | "hybrid";
+  mode: "semantic" | "keyword" | "hybrid" | "ast";
   tags?: string[];
   top_k: number;
   source_types?: SourceType[];
@@ -70,7 +70,7 @@ export interface SearchQuery {
 export interface SearchResult {
   source: SourceData;
   score: number;
-  match_type: "semantic" | "keyword" | "hybrid";
+  match_type: "semantic" | "keyword" | "hybrid" | "ast";
   model_scores?: Record<string, number>;
 }
 
@@ -95,5 +95,6 @@ export interface IndexStats {
   total_sources: number;
   total_chunks: number;
   total_files: number;
+  total_tokens: number;
   last_indexed: string; // ISO 8601
 }

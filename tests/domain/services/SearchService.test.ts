@@ -159,6 +159,44 @@ describe("SearchService", () => {
     });
   });
 
+  // ── AST mode ─────────────────────────────────────────────
+
+  describe("ast search", () => {
+    test("routes to repo with ast mode", async () => {
+      const repo = new MockSourceRepository();
+      await seedRepo(repo, [
+        { content: "some file content" },
+      ]);
+
+      let capturedMode = "";
+      const originalSearch = repo.search.bind(repo);
+      repo.search = async (q: SearchQuery) => {
+        capturedMode = q.mode;
+        return originalSearch(q);
+      };
+
+      const service = new SearchService(new MockEmbedder("k", 4), repo);
+      await service.search({ text: "import:zod", mode: "ast", top_k: 10 });
+
+      expect(capturedMode).toBe("ast");
+    });
+
+    test("returns results with ast match_type", async () => {
+      const repo = new MockSourceRepository();
+      await seedRepo(repo, [
+        { content: "import zod from 'zod'" },
+      ]);
+
+      const service = new SearchService(new MockEmbedder("k", 4), repo);
+      const results = await service.search({ text: "zod", mode: "ast", top_k: 10 });
+
+      expect(results.length).toBeGreaterThan(0);
+      for (const r of results) {
+        expect(r.match_type).toBe("ast");
+      }
+    });
+  });
+
   // ── Hybrid mode ────────────────────────────────────────────
 
   describe("hybrid search", () => {

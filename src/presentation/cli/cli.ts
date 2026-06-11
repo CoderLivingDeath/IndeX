@@ -69,9 +69,10 @@ Usage: indeX <command> [args] [flags]
 Commands:
   index <path>          Index all supported files in directory
   search <query>        Search indexed content
-    --mode <mode>         Search mode: semantic | keyword | hybrid (default)
+    --mode <mode>         Search mode: semantic | keyword | hybrid | ast (default: hybrid)
     --top-k <n>           Number of results (default: 10)
     --tags <tags>         Filter by tags (comma-separated)
+    --ast                 Shortcut for --mode ast
   pack <path>           Pack files into Markdown bundle
     -o <file>             Output file (default: stdout)
     --include <pattern>   Include files matching glob (comma-separated)
@@ -105,8 +106,9 @@ export async function executeCommand(
     case "search": {
       const [query] = args;
       if (!query) { console.error("Error: query required"); return; }
+      const mode = flags.ast === "true" ? "ast" : (flags.mode ?? "hybrid");
       const results = await app.search.execute(query, {
-        mode: (flags.mode as any) ?? "hybrid",
+        mode: mode as any,
         top_k: flags["top-k"] ? parseInt(flags["top-k"], 10) : 10,
       });
       for (const r of results) {
@@ -152,8 +154,12 @@ export async function executeCommand(
       break;
     }
     case "stats": {
-      const repo = (app as any).del;
-      console.log("Stats requested");
+      const stats = await app.del.stats();
+      console.log(`Index statistics:
+  Files:    ${stats.total_files}
+  Chunks:   ${stats.total_chunks}
+  Tokens:   ${stats.total_tokens}
+  Last indexed: ${stats.last_indexed}`);
       break;
     }
     case "clear": {

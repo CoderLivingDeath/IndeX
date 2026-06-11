@@ -424,11 +424,13 @@ describe("IndexStats", () => {
       total_sources: 100,
       total_chunks: 350,
       total_files: 80,
+      total_tokens: 400,
       last_indexed: "2026-03-01T12:00:00.000Z",
     };
     expect(stats.total_sources).toBe(100);
     expect(stats.total_chunks).toBe(350);
     expect(stats.total_files).toBe(80);
+    expect(stats.total_tokens).toBe(400);
     expect(stats.last_indexed).toMatch(
       /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
     );
@@ -439,10 +441,12 @@ describe("IndexStats", () => {
       total_sources: 0,
       total_chunks: 0,
       total_files: 0,
+      total_tokens: 0,
       last_indexed: "2026-01-01T00:00:00.000Z",
     };
     expect(stats.total_sources).toBe(0);
     expect(stats.total_chunks).toBe(0);
     expect(stats.total_files).toBe(0);
+    expect(stats.total_tokens).toBe(0);
   });
 });

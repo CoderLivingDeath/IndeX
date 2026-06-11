@@ -22,11 +22,15 @@ describe("SourceRepository interface", () => {
         total_sources: 0,
         total_chunks: 0,
         total_files: 0,
+        total_tokens: 0,
         last_indexed: "2026-01-01T00:00:00.000Z",
       }),
       upsertFileIndex: async () => {},
       getFileIndex: async () => null,
       deleteFileIndex: async () => {},
+      getDbMeta: async () => null,
+      setDbMeta: async () => {},
+      getAllDbMeta: async () => ({}),
       dropAll: async () => {},
     };
 
@@ -47,6 +51,9 @@ describe("SourceRepository interface", () => {
     expect(typeof mock.upsertFileIndex).toBe("function");
     expect(typeof mock.getFileIndex).toBe("function");
     expect(typeof mock.deleteFileIndex).toBe("function");
+    expect(typeof mock.getDbMeta).toBe("function");
+    expect(typeof mock.setDbMeta).toBe("function");
+    expect(typeof mock.getAllDbMeta).toBe("function");
     expect(typeof mock.dropAll).toBe("function");
   });
 
@@ -68,11 +75,15 @@ describe("SourceRepository interface", () => {
         total_sources: 1,
         total_chunks: 3,
         total_files: 1,
+        total_tokens: 0,
         last_indexed: "2026-01-01T00:00:00.000Z",
       }),
       upsertFileIndex: async () => {},
       getFileIndex: async () => null,
       deleteFileIndex: async () => {},
+      getDbMeta: async () => null,
+      setDbMeta: async () => {},
+      getAllDbMeta: async () => ({}),
       dropAll: async () => {},
     };
 
@@ -93,11 +104,15 @@ describe("SourceRepository interface", () => {
       total_sources: 1,
       total_chunks: 3,
       total_files: 1,
+      total_tokens: 0,
       last_indexed: "2026-01-01T00:00:00.000Z",
     });
     await expect(mock.upsertFileIndex({} as never)).resolves.toBeUndefined();
     await expect(mock.getFileIndex("/a.ts")).resolves.toBeNull();
     await expect(mock.deleteFileIndex("/a.ts")).resolves.toBeUndefined();
+    await expect(mock.getDbMeta("key")).resolves.toBeNull();
+    await expect(mock.setDbMeta("key", "val")).resolves.toBeUndefined();
+    await expect(mock.getAllDbMeta()).resolves.toEqual({});
     await expect(mock.dropAll()).resolves.toBeUndefined();
   });
 
@@ -120,14 +135,18 @@ describe("SourceRepository interface", () => {
         total_sources: 0,
         total_chunks: 0,
         total_files: 0,
+        total_tokens: 0,
         last_indexed: "2026-01-01T00:00:00.000Z",
       }),
       upsertFileIndex: async () => {},
       getFileIndex: async () => null,
       deleteFileIndex: async () => {},
+      getDbMeta: async () => null,
+      setDbMeta: async () => {},
+      getAllDbMeta: async () => ({}),
       dropAll: async () => {},
     };
-    // All 17 methods
-    expect(Object.keys(mock).length).toBe(17);
+    // All 20 methods
+    expect(Object.keys(mock).length).toBe(20);
   });
 });

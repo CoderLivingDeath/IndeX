@@ -25,6 +25,7 @@ export class LanceDbSourceRepository implements SourceRepository {
   private db: Connection | null = null;
   private sourcesTable: Table | null = null;
   private fileIndexTable: Table | null = null;
+  private dbMetaTable: Table | null = null;
   private connected = false;
 
   constructor(private readonly uri: string) {}
@@ -112,9 +113,23 @@ export class LanceDbSourceRepository implements SourceRepository {
     if (this.fileIndexTable) return this.fileIndexTable;
     try {
       this.fileIndexTable = await this.db!.openTable("file_index");
+      await this.ensureFileIndexFtsIndex(this.fileIndexTable);
       return this.fileIndexTable;
     } catch {
       return null;
+    }
+  }
+
+  /** Build FTS index on ast_text column. */
+  private async ensureFileIndexFtsIndex(table: Table): Promise<void> {
+    try {
+      await table.createIndex("ast_text", {
+        config: lancedb.Index.fts({ withPosition: true }),
+        replace: true,
+        waitTimeoutSeconds: 30,
+      });
+    } catch {
+      // FTS index may not be supported in memory:// mode
     }
   }
 
@@ -132,6 +147,7 @@ export class LanceDbSourceRepository implements SourceRepository {
       new Field("symbols", new Utf8(), true),
       new Field("relationships", new Utf8(), true),
       new Field("last_parsed", new Utf8(), true),
+      new Field("ast_text", new Utf8(), true),
     ];
 
     const schema = new Schema(fields);
@@ -140,6 +156,9 @@ export class LanceDbSourceRepository implements SourceRepository {
       existOk: false,
       schema,
     });
+
+    // Build FTS index on ast_text
+    await this.ensureFileIndexFtsIndex(this.fileIndexTable);
 
     return this.fileIndexTable;
   }
@@ -283,6 +302,8 @@ export class LanceDbSourceRepository implements SourceRepository {
       const lanceQuery = table.vectorSearch(vec).limit(topK);
       if (filterClause) lanceQuery.where(filterClause);
       rows = (await lanceQuery.toArray()) as Record<string, unknown>[];
+    } else if (query.mode === "ast") {
+      return this.executeAstSearch(query);
     } else {
       rows = await this.executeKeywordSearch(table, query.text, topK, query.source_types, query.tags);
     }
@@ -421,12 +442,61 @@ export class LanceDbSourceRepository implements SourceRepository {
     return (results[0] as Record<string, unknown>).file_blake3 as string;
   }
 
+  // ── AST Search ────────────────────────────────────────────
+
+  private async executeAstSearch(query: SearchQuery): Promise<SearchResult[]> {
+    const fiTable = await this.getFileIndexTable();
+    if (!fiTable) return [];
+
+    const sourcesTable = await this.getSourcesTable();
+    if (!sourcesTable) return [];
+
+    const topK = query.top_k ?? 10;
+
+    // Search file_index ast_text via FTS
+    let fiQuery = fiTable.query().limit(topK);
+    if (query.text) {
+      fiQuery = fiQuery.fullTextSearch(query.text);
+    }
+
+    let fiRows: Record<string, unknown>[];
+    try {
+      fiRows = (await fiQuery.toArray()) as Record<string, unknown>[];
+    } catch {
+      // FTS not available
+      return [];
+    }
+
+    // For each matching file, get chunks by path from sources table
+    const results: SearchResult[] = [];
+    for (const fiRow of fiRows) {
+      const path = fiRow.path as string;
+      const astScore = ((fiRow._score as number) ?? 1);
+
+      const chunkRows = await sourcesTable.query()
+        .where(`path = '${escapeLanceSqlString(path)}'`)
+        .toArray();
+
+      for (const row of chunkRows) {
+        results.push({
+          source: this.recordToSourceData(row as Record<string, unknown>),
+          score: astScore,
+          match_type: "ast",
+        });
+      }
+    }
+
+    // Sort by score descending, limit
+    results.sort((a, b) => b.score - a.score);
+    return results.slice(0, topK);
+  }
+
   // ── Stats ──────────────────────────────────────────────────
 
   async stats(): Promise<IndexStats> {
     const table = await this.getSourcesTable();
     if (!table) {
-      return { total_sources: 0, total_chunks: 0, total_files: 0, last_indexed: new Date().toISOString() };
+      return { total_sources: 0, total_chunks: 0, total_files: 0, total_tokens: 0, last_indexed: new Date().toISOString() };
     }
 
     const totalChunks = await table.countRows();
@@ -446,6 +516,7 @@ export class LanceDbSourceRepository implements SourceRepository {
       total_sources: uniquePaths.size,
       total_chunks: totalChunks,
       total_files: uniquePaths.size,
+      total_tokens: 0,
       last_indexed: maxDate || new Date().toISOString(),
     };
   }
@@ -484,14 +555,94 @@ export class LanceDbSourceRepository implements SourceRepository {
     await table.delete(`path = '${escapeLanceSqlString(path)}'`);
   }
 
+  // ── DB Metadata ────────────────────────────────────────────
+
+  /** Open the db_meta table. Returns null if not yet created. */
+  private async getDbMetaTable(): Promise<Table | null> {
+    await this.ensureConnected();
+    if (this.dbMetaTable) return this.dbMetaTable;
+    try {
+      this.dbMetaTable = await this.db!.openTable("db_meta");
+      return this.dbMetaTable;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Ensure the db_meta table exists. */
+  private async ensureDbMetaTable(): Promise<Table> {
+    const existing = await this.getDbMetaTable();
+    if (existing) return existing;
+
+    const schema = new Schema([
+      new Field("key", new Utf8(), false),
+      new Field("value", new Utf8(), true),
+    ]);
+
+    this.dbMetaTable = await this.db!.createTable("db_meta", [], {
+      mode: "create",
+      existOk: false,
+      schema,
+    });
+
+    return this.dbMetaTable;
+  }
+
+  async getDbMeta(key: string): Promise<unknown | null> {
+    const table = await this.getDbMetaTable();
+    if (!table) return null;
+
+    const results = await table.query()
+      .where(`key = '${escapeLanceSqlString(key)}'`)
+      .limit(1)
+      .toArray();
+
+    if (results.length === 0) return null;
+    const raw = (results[0] as Record<string, unknown>).value as string;
+    if (raw === undefined || raw === null) return null;
+    try { return JSON.parse(raw); } catch { return raw; }
+  }
+
+  async setDbMeta(key: string, value: unknown): Promise<void> {
+    const table = await this.ensureDbMetaTable();
+    const raw = typeof value === "string" ? value : JSON.stringify(value);
+
+    try {
+      await table.delete(`key = '${escapeLanceSqlString(key)}'`);
+    } catch {
+      // Row may not exist
+    }
+
+    await table.add([{ key, value: raw }]);
+  }
+
+  async getAllDbMeta(): Promise<Record<string, unknown>> {
+    const table = await this.getDbMetaTable();
+    if (!table) return {};
+
+    const rows = await table.query().toArray();
+    const result: Record<string, unknown> = {};
+    for (const r of rows) {
+      const rec = r as Record<string, unknown>;
+      const k = rec.key as string;
+      const raw = rec.value as string;
+      if (k) {
+        try { result[k] = JSON.parse(raw); } catch { result[k] = raw; }
+      }
+    }
+    return result;
+  }
+
   // ── Cleanup ────────────────────────────────────────────────
 
   async dropAll(): Promise<void> {
     await this.ensureConnected();
     try { await this.db!.dropTable("sources"); } catch { /* already gone */ }
     try { await this.db!.dropTable("file_index"); } catch { /* already gone */ }
+    try { await this.db!.dropTable("db_meta"); } catch { /* already gone */ }
     this.sourcesTable = null;
     this.fileIndexTable = null;
+    this.dbMetaTable = null;
   }
 
   // ── Serialisation helpers ──────────────────────────────────
@@ -584,7 +735,28 @@ export class LanceDbSourceRepository implements SourceRepository {
       symbols: JSON.stringify(index.symbols),
       relationships: JSON.stringify(index.relationships),
       last_parsed: index.last_parsed,
+      ast_text: this.generateAstText(index),
     };
+  }
+
+  /** Generate flat text projection of AST data for FTS search. */
+  private generateAstText(index: FileIndex): string {
+    const parts: string[] = [];
+
+    for (const imp of index.imports) {
+      parts.push(`import:${imp.source}:${imp.specifiers.join(",")}`);
+    }
+    for (const exp of index.exports) {
+      parts.push(`export:${exp.name}:${exp.kind}`);
+    }
+    for (const sym of index.symbols) {
+      parts.push(`symbol:${sym.kind}:${sym.name}[${sym.startPosition.line}]`);
+    }
+    for (const rel of index.relationships) {
+      parts.push(`relationship:${rel.type}:${rel.source}:${rel.target}`);
+    }
+
+    return parts.join(" ");
   }
 
   private recordToFileIndex(record: Record<string, unknown>): FileIndex {

@@ -32,7 +32,13 @@ export class SearchService {
         return this.keywordSearch(query);
       case "hybrid":
         return this.hybridSearch(query);
+      case "ast":
+        return this.astSearch(query);
     }
+  }
+
+  private async astSearch(query: SearchQuery): Promise<SearchResult[]> {
+    return this.repo.search({ ...query, mode: "ast" });
   }
 
   // ── Private mode implementations ──────────────────────────

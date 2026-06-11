@@ -1,5 +1,6 @@
 import type { Embedding, Embedder } from "../../domain/systems/EmbeddingSystem";
 import type { EmbedderCache } from "../../domain/systems/EmbeddingSystem";
+import type { Hasher } from "../../domain/systems/HashingSystem";
 
 /**
  * A proxy/decorator that wraps an Embedder with an LRU cache.
@@ -15,14 +16,15 @@ export class CachedEmbedder implements Embedder {
   constructor(
     private readonly embedder: Embedder,
     private readonly cache: EmbedderCache,
-    private readonly hasher: { hash(text: string): string },
+    private readonly hasher: Hasher,
   ) {
     this.model = embedder.model;
     this.dimensions = embedder.dimensions;
   }
 
   async embed(text: string): Promise<Embedding> {
-    const key = `${this.embedder.model}:${this.hasher.hash(text)}`;
+    const hash = await this.hasher.hash(text);
+    const key = `${this.embedder.model}:${hash}`;
 
     const cached = await this.cache.get(key);
     if (cached !== null) {

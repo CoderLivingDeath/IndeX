@@ -118,9 +118,9 @@ describe("PackUseCase", () => {
       const options: PackOptions = { include: ["**/*.md"] };
       const result = await useCase.execute(tmpDir, options);
       expect(result.markdown).toBeTruthy();
-      // Should have combined content of both .md files
+      // Should have combined content of both .md files in code fences
       expect(result.markdown).toContain("# My Project");
-      expect(result.markdown).toContain("## How to Contribute");
+      expect(result.markdown).toContain("How to Contribute");
       // Should NOT contain the .ts file content
       expect(result.markdown).not.toContain('console.log("hello")');
       expect(result.chunks_used).toBeGreaterThanOrEqual(2);
@@ -132,16 +132,25 @@ describe("PackUseCase", () => {
       const options: PackOptions = { exclude: ["**/CONTRIBUTING.md"] };
       const result = await useCase.execute(tmpDir, options);
       expect(result.markdown).toContain("# My Project");
-      expect(result.markdown).not.toContain("## How to Contribute");
+      expect(result.markdown).not.toContain("How to Contribute");
     });
 
-    // ── test 3: concatenation format correct (Markdown with headers) ──
-    test("packed markdown has file headers for each source", async () => {
+    // ── test 3: structured format has file index and metadata ──
+    test("packed markdown has file index table and per-file metadata", async () => {
       const result = await useCase.execute(tmpDir);
-      // Each file should have a markdown header indicating its path
+      // Should have File Index table of contents
+      expect(result.markdown).toContain("## File Index");
+      expect(result.markdown).toContain("| # | Path | Language | Lines | Tokens |");
+      // Each file should appear in the index and have a ## header and metadata
       expect(result.markdown).toContain("README.md");
       expect(result.markdown).toContain("CONTRIBUTING.md");
       expect(result.markdown).toContain("main.ts");
+      // Should have metadata fields
+      expect(result.markdown).toContain("type: markdown");
+      expect(result.markdown).toContain("type: code");
+      expect(result.markdown).toContain("### content");
+      // The code file should use ### code (not ### content)
+      expect(result.markdown).toContain("### code");
     });
   });
 });

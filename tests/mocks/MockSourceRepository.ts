@@ -156,6 +156,7 @@ export class MockSourceRepository implements SourceRepository {
       total_sources: uniquePaths.size,
       total_chunks: this.sources.size,
       total_files: uniquePaths.size,
+      total_tokens: 0,
       last_indexed: this.lastIndexed,
     };
   }
@@ -174,10 +175,27 @@ export class MockSourceRepository implements SourceRepository {
     this.fileIndices.delete(path);
   }
 
+  // ── DB Metadata ────────────────────────────────────────────
+
+  private dbMeta = new Map<string, unknown>();
+
+  async getDbMeta(key: string): Promise<unknown | null> {
+    return this.dbMeta.get(key) ?? null;
+  }
+
+  async setDbMeta(key: string, value: unknown): Promise<void> {
+    this.dbMeta.set(key, value);
+  }
+
+  async getAllDbMeta(): Promise<Record<string, unknown>> {
+    return Object.fromEntries(this.dbMeta);
+  }
+
   // ── Cleanup ────────────────────────────────────────────────
 
   async dropAll(): Promise<void> {
     this.sources.clear();
     this.fileIndices.clear();
+    this.dbMeta.clear();
   }
 }

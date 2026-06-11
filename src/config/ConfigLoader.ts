@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import { readFileSync, existsSync } from "fs";
+import { join, resolve, sep } from "path";
 import { z, ZodError } from "zod";
 
 // ── Zod schemas ───────────────────────────────────────────────────
@@ -83,6 +84,48 @@ const defaultConfig: Config = {
   },
 };
 
+// ── Hierarchical config resolution ────────────────────────────────
+
+/**
+ * Resolve the config file path using a 3-level hierarchy:
+ *
+ * 1. **Current directory** — `.indeX/config.json` relative to `startDir`
+ * 2. **Parent directories** — walk up from `startDir` looking for `.indeX/config.json`
+ * 3. **System config** — `~/.config/indeX/config.json` (cross-platform)
+ *
+ * @param startDir - Directory to start the search from (default: `process.cwd()`).
+ * @returns The absolute path to the first config file found, or `null` if none exists.
+ */
+export function resolveConfigPath(startDir?: string): string | null {
+  const dir = startDir ?? process.cwd();
+
+  // 1. Current directory
+  const localPath = join(dir, ".indeX", "config.json");
+  if (existsSync(localPath)) return localPath;
+
+  // 2. Walk up parent directories
+  let current = resolve(dir);
+  while (true) {
+    const parent = resolve(current, "..");
+    if (parent === current) break; // reached filesystem root
+    current = parent;
+    const parentPath = join(current, ".indeX", "config.json");
+    if (existsSync(parentPath)) return parentPath;
+  }
+
+  // 3. System config directory (cross-platform)
+  const home = process.env.XDG_CONFIG_HOME
+    ?? (process.platform === "win32"
+      ? process.env.USERPROFILE
+      : process.env.HOME);
+  if (home) {
+    const systemPath = join(home, ".config", "indeX", "config.json");
+    if (existsSync(systemPath)) return systemPath;
+  }
+
+  return null;
+}
+
 // ── Loader API ────────────────────────────────────────────────────
 
 /**
@@ -113,16 +156,20 @@ export function load(path?: string): Config {
 }
 
 /**
- * Attempt to load the config file; if it does not exist, return a sensible
- * default configuration.
+ * Attempt to load the config file using the 3-level hierarchy:
  *
- * @param path - Path to the config file (default: `.indeX/config.json` relative
- *               to the current working directory).
+ * 1. `.indeX/config.json` in the current directory
+ * 2. `.indeX/config.json` in parent directories (walking up)
+ * 3. `~/.config/indeX/config.json` (system-wide)
+ *
+ * If no config file is found anywhere, return sensible defaults.
+ *
+ * @param configPath - Optional explicit path (bypasses hierarchy lookup).
  * @returns A validated `Config` object (real or default).
  */
-export function loadOrDefault(path?: string): Config {
-  const resolved = path ?? ".indeX/config.json";
-  if (!existsSync(resolved)) {
+export function loadOrDefault(configPath?: string): Config {
+  const resolved = configPath ?? resolveConfigPath();
+  if (!resolved || !existsSync(resolved)) {
     return { ...defaultConfig };
   }
   return load(resolved);

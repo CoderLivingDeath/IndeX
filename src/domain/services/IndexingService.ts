@@ -8,6 +8,8 @@ import type { SourceRepository } from "../ports/SourceRepository";
 import type { Hasher } from "../systems/HashingSystem";
 import type { SourceData, IndexStats, SourceMetadata } from "../types";
 import type { FileIndex } from "../ast";
+import { generateAstSummary } from "../ast";
+import { truncateEmbedContent } from "./embedTruncation";
 
 /**
  * Orchestrates the indexing pipeline: scan directory → filter files →
@@ -39,6 +41,7 @@ export class IndexingService {
   async index(directory: string): Promise<IndexStats> {
     const files = this.scanDirectory(directory);
     const included = files.filter((f) => this.fileFilter.shouldInclude(f));
+    let totalTokens = 0;
 
     for (const filePath of included) {
       const parser = this.parserRegistry.getParser(filePath);
@@ -51,16 +54,32 @@ export class IndexingService {
       // Enrich metadata with AST when available
       const metaWithAst = enrichMetadata(parsed.metadata, parsed.fileIndex);
 
+      // Generate AST summary for semantic enrichment
+      const astSummary = parsed.fileIndex ? generateAstSummary(parsed.fileIndex) : "";
+
       const batch: SourceData[] = [];
+      let fileTokens = 0;
 
       for (const chunk of chunks) {
-        const semanticHash = await this.hasher.hash(chunk.core_content);
+        // Append AST summary to content before embedding (semantic AST search)
+        // Truncate to fit model's context window
+        const embedContent = await truncateEmbedContent(astSummary, chunk.core_content);
+
+        const semanticHash = await this.hasher.hash(embedContent);
+
+        // Dedup: skip if chunk with same semantic hash already exists
+        if (await this.repo.hasSemanticBlake3(semanticHash)) {
+          continue;
+        }
+
+        fileTokens += chunk.size_tokens;
+
         const embedder = this.embedderRegistry.getEmbedder(parsed.type);
         const embeddings: number[] = [];
 
         // Embed via the model registered for this source type (if any)
         if (embedder) {
-          const result = await embedder.embed(chunk.core_content);
+          const result = await embedder.embed(embedContent);
           embeddings.push(...result.vector);
         }
 
@@ -88,6 +107,7 @@ export class IndexingService {
 
       if (batch.length > 0) {
         await this.repo.upsertBatch(batch);
+        totalTokens += fileTokens;
       }
 
       // Persist FileIndex if the parser provides one
@@ -96,7 +116,8 @@ export class IndexingService {
       }
     }
 
-    return this.repo.stats();
+    const repoStats = await this.repo.stats();
+    return { ...repoStats, total_tokens: totalTokens };
   }
 
   /** Recursively collect all file paths under `dir`. */

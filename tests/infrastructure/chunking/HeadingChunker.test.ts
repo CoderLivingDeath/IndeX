@@ -38,9 +38,9 @@ Install and run.`;
     }
   });
 
-  it("returns empty array when a section exceeds max_tokens (falls through)", async () => {
+  it("includes oversized sections as-is when no fallback is configured", async () => {
     // Each section estimate is 150 tokens, maxTokens=100
-    // So all sections exceed → return empty
+    // With no fallback, the chunker preserves content rather than losing it
     const estimator = new MockTokenEstimator(150);
     const chunker = new HeadingChunker(100, estimator);
     const text = `# Very Large Section
@@ -50,7 +50,9 @@ ${"B".repeat(500)}`;
 
     const result = await chunker.chunk(text);
 
-    expect(result).toHaveLength(0);
+    expect(result).toHaveLength(2);
+    expect(result[0].strategy).toBe("heading");
+    expect(result[1].strategy).toBe("heading");
   });
 
   it("core_content is section body without the heading", async () => {

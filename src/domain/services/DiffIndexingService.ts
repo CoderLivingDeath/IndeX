@@ -8,6 +8,8 @@ import type { SourceRepository } from "../ports/SourceRepository";
 import type { Hasher } from "../systems/HashingSystem";
 import type { SourceData, SourceMetadata } from "../types";
 import type { FileIndex } from "../ast";
+import { generateAstSummary } from "../ast";
+import { truncateEmbedContent } from "./embedTruncation";
 
 export interface DiffIndexResult {
   indexed: number;
@@ -88,21 +90,28 @@ export class DiffIndexingService {
     const chunks = await this.chunker.chunk(parsed.content);
     const sourceId = crypto.randomUUID();
 
+    const metaWithAst = enrichMetadata(parsed.metadata, parsed.fileIndex);
+
+    // Generate AST summary for semantic enrichment
+    const astSummary = parsed.fileIndex ? generateAstSummary(parsed.fileIndex) : "";
+
     const batch: SourceData[] = [];
 
     for (const chunk of chunks) {
-      const semanticHash = await this.hasher.hash(chunk.core_content);
+      // Append AST summary to content before embedding (semantic AST search)
+      // Truncate to fit model's context window
+      const embedContent = await truncateEmbedContent(astSummary, chunk.core_content);
+
+      const semanticHash = await this.hasher.hash(embedContent);
       const embedder = this.embedderRegistry.getEmbedder(parsed.type);
       const embeddings: number[] = [];
 
       if (embedder) {
-        const result = await embedder.embed(chunk.core_content);
+        const result = await embedder.embed(embedContent);
         embeddings.push(...result.vector);
       }
 
       const now = new Date().toISOString();
-
-      const metaWithAst = enrichMetadata(parsed.metadata, parsed.fileIndex);
 
       batch.push({
         id: crypto.randomUUID(),

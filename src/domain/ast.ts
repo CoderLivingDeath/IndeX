@@ -3,6 +3,38 @@
 // ---------------------------------------------------------------------------
 
 /**
+ * Generate a human-readable AST summary to prepend to embedding content.
+ * Returns undefined for files without code structure.
+ */
+export function generateAstSummary(fileIndex: FileIndex): string {
+  const lines: string[] = [];
+
+  if (fileIndex.imports.length > 0) {
+    const parts = fileIndex.imports.map(
+      (imp) => `${imp.source} → ${imp.specifiers.join(", ")}`,
+    );
+    lines.push(`imports: ${parts.join("; ")}`);
+  }
+
+  if (fileIndex.exports.length > 0) {
+    const parts = fileIndex.exports.map(
+      (exp) => `${exp.kind} ${exp.name}`,
+    );
+    lines.push(`exports: ${parts.join(", ")}`);
+  }
+
+  if (fileIndex.symbols.length > 0) {
+    const parts = fileIndex.symbols.map(
+      (sym) => `${sym.kind} ${sym.name}${sym.signature ? `(${sym.signature})` : ""}`,
+    );
+    lines.push(`symbols: ${parts.join(", ")}`);
+  }
+
+  if (lines.length === 0) return "";
+  return `--- AST ---\n${lines.join("\n")}`;
+}
+
+/**
  * Kinds of symbols that can be extracted from source code.
  */
 export type SymbolKind =

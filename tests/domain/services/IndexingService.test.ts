@@ -88,16 +88,17 @@ describe("IndexingService", () => {
         simpleParser("code"),
         simpleParser("markdown"),
       );
-      const mockChunker = new MockChunker([
-        {
+      const mockChunker: import("../../../src/domain/systems/ChunkingSystem").Chunker = {
+        type: "generic" as any,
+        chunk: async (text: string) => [{
           content: "chunk content",
-          core_content: "core semantic unit",
+          core_content: text.includes("code") ? "core code unit" : "core md unit",
           chunk_index: 0,
           total_chunks: 1,
           strategy: "fixed",
           size_tokens: 10,
-        },
-      ]);
+        }],
+      };
       const mockEmbedder = new MockEmbedder("test-model", 128);
       const mockEmbRegistry = new MockEmbedderRegistry({
         code: mockEmbedder,
@@ -172,16 +173,17 @@ describe("IndexingService", () => {
       const service = new IndexingService(
         filter,
         makeParserRegistry(parser),
-        new MockChunker([
-          {
+        { type: "generic" as any, chunk: (() => {
+          let counter = 0;
+          return async (_text: string) => [{
             content: "c",
-            core_content: "cc",
+            core_content: `cc-${counter++}`,
             chunk_index: 0,
             total_chunks: 1,
             strategy: "fixed",
             size_tokens: 5,
-          },
-        ]),
+          }];
+        })() } as any,
         new MockEmbedderRegistry({ code: new MockEmbedder("m", 8) }),
         new MockSourceRepository(),
         new MockHasher(),
@@ -207,16 +209,14 @@ describe("IndexingService", () => {
       const service = new IndexingService(
         makeFilter((p) => p.endsWith(".ts") || p.endsWith(".md")),
         makeParserRegistry(simpleParser("code"), simpleParser("markdown")),
-        new MockChunker([
-          {
-            content: "x",
-            core_content: "semantic unit",
-            chunk_index: 0,
-            total_chunks: 1,
-            strategy: "fixed",
-            size_tokens: 5,
-          },
-        ]),
+        { type: "generic" as any, chunk: async (text: string) => [{
+          content: "x",
+          core_content: text.includes("code") ? "semantic code unit" : "semantic md unit",
+          chunk_index: 0,
+          total_chunks: 1,
+          strategy: "fixed",
+          size_tokens: 5,
+        }] } as any,
         new MockEmbedderRegistry({ code: codeEmbedder, markdown: mdEmbedder }),
         repo,
         new MockHasher(),

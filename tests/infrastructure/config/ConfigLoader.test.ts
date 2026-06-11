@@ -71,8 +71,8 @@ describe("ConfigLoader", () => {
       join(tmpDir, "nonexistent", "config.json"),
     );
     expect(config.models).toHaveLength(1);
-    expect(config.models[0]!.name).toBe("nomic-embed-text");
-    expect(config.universal_model).toBe("nomic-embed-text");
+    expect(config.models[0]!.name).toBe("qllama/multilingual-e5-small");
+    expect(config.universal_model).toBe("qllama/multilingual-e5-small");
     expect(config.embedder.batch_size).toBe(10);
     expect(config.chunking.default_strategy).toBe("heading");
     expect(config.search.default_mode).toBe("hybrid");

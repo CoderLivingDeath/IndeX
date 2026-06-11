@@ -36,6 +36,14 @@ export class IndexUseCase {
       this.systems.hasher,
     );
 
-    return service.index(directory);
+    const stats = await service.index(directory);
+
+    // Update database metadata
+    await this.systems.repo.setDbMeta("last_indexed", stats.last_indexed);
+    await this.systems.repo.setDbMeta("total_files", stats.total_files);
+    await this.systems.repo.setDbMeta("total_chunks", stats.total_chunks);
+    await this.systems.repo.setDbMeta("total_tokens", stats.total_tokens);
+
+    return stats;
   }
 }

@@ -284,20 +284,58 @@ describe("LanceDbSourceRepository", () => {
     });
   });
 
+  // ── DB Metadata ────────────────────────────────────────────
+
+  describe("db_meta", () => {
+    it("setDbMeta → getDbMeta returns the value", async () => {
+      await repo.setDbMeta("schema_version", 2);
+      const val = await repo.getDbMeta("schema_version");
+      expect(val).toBe(2);
+    });
+
+    it("getDbMeta returns null for unset key", async () => {
+      const val = await repo.getDbMeta("nonexistent_key");
+      expect(val).toBeNull();
+    });
+
+    it("setDbMeta overwrites existing value", async () => {
+      await repo.setDbMeta("theme", "dark");
+      await repo.setDbMeta("theme", "light");
+      const val = await repo.getDbMeta("theme");
+      expect(val).toBe("light");
+    });
+
+    it("getAllDbMeta returns all key-value pairs", async () => {
+      await repo.setDbMeta("key1", "value1");
+      await repo.setDbMeta("key2", 42);
+      const all = await repo.getAllDbMeta();
+      expect(all).toHaveProperty("key1", "value1");
+      expect(all).toHaveProperty("key2", 42);
+    });
+
+    it("getAllDbMeta returns empty object when no metadata set", async () => {
+      const all = await repo.getAllDbMeta();
+      expect(all).toEqual({});
+    });
+  });
+
   // ── Cleanup ────────────────────────────────────────────────
 
   describe("cleanup", () => {
     it("dropAll clears all data", async () => {
       await repo.upsert(makeSourceData({ id: "clr1", path: "/clear.ts" }));
       await repo.upsertFileIndex(makeFileIndex({ path: "/clear.idx.ts" }));
+      await repo.setDbMeta("some_key", "some_value");
 
       expect(await repo.getById("clr1")).not.toBeNull();
       expect(await repo.getFileIndex("/clear.idx.ts")).not.toBeNull();
+      expect(await repo.getDbMeta("some_key")).toBe("some_value");
 
       await repo.dropAll();
 
       expect(await repo.getById("clr1")).toBeNull();
       expect(await repo.getFileIndex("/clear.idx.ts")).toBeNull();
+      expect(await repo.getDbMeta("some_key")).toBeNull();
     });
   });
 

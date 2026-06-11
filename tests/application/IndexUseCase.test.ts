@@ -97,16 +97,17 @@ describe("IndexUseCase", () => {
         register: () => {},
       };
 
-      const mockChunker = new MockChunker([
-        {
+      const mockChunker: import("../../src/domain/systems/ChunkingSystem").Chunker = {
+        type: "generic" as any,
+        chunk: async (text: string) => [{
           content: "chunk content",
-          core_content: "core semantic unit",
+          core_content: text.includes("code") ? "core semantic unit code" : "core semantic unit md",
           chunk_index: 0,
           total_chunks: 1,
           strategy: "fixed",
           size_tokens: 10,
-        },
-      ]);
+        }],
+      };
 
       const mockEmbedder = new MockEmbedder("test-model", 128);
       const mockEmbRegistry = new MockEmbedderRegistry({

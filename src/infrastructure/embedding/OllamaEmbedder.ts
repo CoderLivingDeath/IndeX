@@ -54,8 +54,9 @@ export class OllamaEmbedder implements Embedder {
         });
 
         if (!response.ok) {
+          const bodyText = await response.text().catch(() => "(no body)");
           throw new Error(
-            `Ollama API error: ${response.status} ${response.statusText}`,
+            `Ollama API error: ${response.status} ${response.statusText} — ${bodyText.slice(0, 300)}`,
           );
         }
 

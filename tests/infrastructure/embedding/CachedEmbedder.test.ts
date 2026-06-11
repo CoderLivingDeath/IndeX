@@ -76,12 +76,14 @@ function createMockCache(): EmbedderCache & {
  */
 function createMockHasher(
   fixedHash?: string,
-): { hash(text: string): string } & { hashCalls: string[] } {
+): { hash(data: string | Uint8Array): Promise<string> } & { hashCalls: string[]; algorithm: string } {
   const hashCalls: string[] = [];
   if (fixedHash !== undefined) {
     return {
       hashCalls,
-      hash: (text: string) => {
+      algorithm: "mock",
+      hash: async (data: string | Uint8Array) => {
+        const text = typeof data === "string" ? data : new TextDecoder().decode(data);
         hashCalls.push(text);
         return fixedHash;
       },
@@ -89,7 +91,9 @@ function createMockHasher(
   }
   return {
     hashCalls,
-    hash: (text: string) => {
+    algorithm: "mock",
+    hash: async (data: string | Uint8Array) => {
+      const text = typeof data === "string" ? data : new TextDecoder().decode(data);
       hashCalls.push(text);
       return `mock-hash:${text}`;
     },

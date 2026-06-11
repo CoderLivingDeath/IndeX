@@ -21,5 +21,11 @@ export interface SourceRepository {
   upsertFileIndex(index: FileIndex): Promise<void>;
   getFileIndex(path: string): Promise<FileIndex | null>;
   deleteFileIndex(path: string): Promise<void>;
+  /** Get a database metadata value by key. Returns null if not set. */
+  getDbMeta(key: string): Promise<unknown | null>;
+  /** Set a database metadata value. */
+  setDbMeta(key: string, value: unknown): Promise<void>;
+  /** Get all database metadata as a flat object. */
+  getAllDbMeta(): Promise<Record<string, unknown>>;
   dropAll(): Promise<void>;
 }

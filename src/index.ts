@@ -195,7 +195,7 @@ export function createApp(options?: CreateAppOptions): AppUseCases {
       modelCfg.dimensions,
       modelCfg.baseUrl ?? "http://localhost:11434",
     );
-    const cached = new CachedEmbedder(baseEmbedder, cache, { hash: (t: string) => t.length.toString() });
+    const cached = new CachedEmbedder(baseEmbedder, cache, hasher);
     embedderRegistry.register("*", cached, 10);
   }
 
