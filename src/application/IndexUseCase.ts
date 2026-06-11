@@ -34,6 +34,7 @@ export class IndexUseCase {
       this.systems.embedderRegistry,
       this.systems.repo,
       this.systems.hasher,
+      this.systems.logger,
     );
 
     const stats = await service.index(directory);

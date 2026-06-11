@@ -15,32 +15,6 @@ import type {
 import { BLAKE3Hasher } from "../hashing/BLAKE3Hasher";
 import { parse, Lang } from "@ast-grep/napi";
 
-// ── Dynamic language registration (C# etc.) ─────────────────────
-
-let csharpRegistered = false;
-
-function ensureCsharpRegistered(): void {
-  if (csharpRegistered) return;
-  try {
-    const { registerDynamicLanguage } = require("@ast-grep/napi") as typeof import("@ast-grep/napi");
-    const csharpLang = require("@ast-grep/lang-csharp") as {
-      libraryPath: string;
-      extensions: string[];
-      languageSymbol?: string;
-      expandoChar?: string;
-    };
-    registerDynamicLanguage({
-      csharp: {
-        libraryPath: csharpLang.libraryPath,
-        extensions: csharpLang.extensions ?? [".cs"],
-      },
-    });
-    csharpRegistered = true;
-  } catch {
-    // C# language support not available — .cs files will fall through
-  }
-}
-
 /**
  * Determine language from file extension.
  */
@@ -396,7 +370,7 @@ export class AstGrepParser implements SourceParser {
     };
   }
 
-  // ── C# parser (via registerDynamicLanguage) ────────────────────
+  // ── C# parser (regex-based, no native dependency) ──────────────
 
   private async parseCSharp(
     path: string,
@@ -404,116 +378,63 @@ export class AstGrepParser implements SourceParser {
     lines: string[],
     file_blake3: string,
   ): Promise<ParsedSource> {
-    ensureCsharpRegistered();
-
     const symbols: SymbolDetail[] = [];
     const imports: Import[] = [];
     const topLevelDeclarations: string[] = [];
 
-    try {
-      const sgRoot = parse("csharp" as any, content);
+    // Extract using statements
+    const usingRegex = /^using\s+([\w.]+);\s*$/gm;
+    let usingMatch: RegExpExecArray | null;
+    while ((usingMatch = usingRegex.exec(content)) !== null) {
+      imports.push({ source: usingMatch[1]!, specifiers: ["*"], kind: "namespace" });
+    }
 
-      for (const child of sgRoot.root().children()) {
-        const kind = child.kind();
-        const text = child.text();
-        const range = child.range();
+    // Extract top-level namespace/class/struct/interface/enum declarations
+    // Matches: `public class Foo` or `internal struct Bar` etc.
+    const declRegex = /(?:public|private|internal|protected|static|abstract|sealed|readonly|partial|\s)*\s+(class|struct|interface|enum)\s+(\w+)/gm;
+    let declMatch: RegExpExecArray | null;
+    while ((declMatch = declRegex.exec(content)) !== null) {
+      const kind = declMatch[1]!;
+      const name = declMatch[2]!;
+      const lineNum = content.substring(0, declMatch.index).split("\n").length;
 
-        switch (kind) {
-          case "class_declaration": {
-            const name = extractCSharpName(child);
-            if (!name) break;
-            symbols.push({
-              kind: "class",
-              name,
-              signature: "",
-              startPosition: { line: range.start.line + 1, column: range.start.column + 1 },
-              endPosition: { line: range.end.line + 1, column: range.end.column + 1 },
-            });
-            topLevelDeclarations.push(name);
-            break;
-          }
+      const symbolKind = kind === "class" ? "class" : kind === "interface" ? "interface" : kind === "struct" ? "struct" : "enum";
+      symbols.push({
+        kind: symbolKind,
+        name,
+        signature: "",
+        startPosition: { line: lineNum, column: 0 },
+        endPosition: { line: lineNum, column: 0 },
+      });
+      topLevelDeclarations.push(name);
+    }
 
-          case "method_declaration": {
-            const name = extractCSharpName(child);
-            if (!name || name === ".ctor") break;
-            const sig = extractSignature(content, range);
-            symbols.push({
-              kind: "function",
-              name,
-              signature: sig,
-              startPosition: { line: range.start.line + 1, column: range.start.column + 1 },
-              endPosition: { line: range.end.line + 1, column: range.end.column + 1 },
-            });
-            break;
-          }
+    // Extract method declarations
+    // Matches: `public void Foo(...)` or `string GetName(...)` etc.
+    const methodRegex = /(?:(?:public|private|internal|protected|static|virtual|override|abstract|sealed|async|\s))*\s+([\w<>[\],\s]+)\s+(\w+)\s*\(([^)]*)\)\s*(?:{|;)/gm;
+    let methodMatch: RegExpExecArray | null;
+    while ((methodMatch = methodRegex.exec(content)) !== null) {
+      const returnType = methodMatch[1]!.trim();
+      const name = methodMatch[2]!;
+      const params = methodMatch[3]!.trim();
 
-          case "constructor_declaration": {
-            const name = extractCSharpName(child);
-            if (!name) break;
-            symbols.push({
-              kind: "function",
-              name: `${name}.ctor`,
-              signature: extractSignature(content, range),
-              startPosition: { line: range.start.line + 1, column: range.start.column + 1 },
-              endPosition: { line: range.end.line + 1, column: range.end.column + 1 },
-            });
-            break;
-          }
+      // Skip if the return type looks like a control flow keyword
+      if (["if", "for", "while", "foreach", "switch", "catch", "using"].includes(returnType)) continue;
+      // Skip if it's a namespace/class/struct/interface keyword
+      if (["class", "struct", "interface", "enum", "namespace"].includes(returnType)) continue;
+      // Skip property-like accessors
+      if (name === "get" || name === "set") continue;
+      // Skip if return type indicates a property/indexer
+      if (name.startsWith("this")) continue;
 
-          case "interface_declaration": {
-            const name = extractCSharpName(child);
-            if (!name) break;
-            symbols.push({
-              kind: "interface",
-              name,
-              signature: "",
-              startPosition: { line: range.start.line + 1, column: range.start.column + 1 },
-              endPosition: { line: range.end.line + 1, column: range.end.column + 1 },
-            });
-            topLevelDeclarations.push(name);
-            break;
-          }
-
-          case "struct_declaration": {
-            const name = extractCSharpName(child);
-            if (!name) break;
-            symbols.push({
-              kind: "struct",
-              name,
-              signature: "",
-              startPosition: { line: range.start.line + 1, column: range.start.column + 1 },
-              endPosition: { line: range.end.line + 1, column: range.end.column + 1 },
-            });
-            topLevelDeclarations.push(name);
-            break;
-          }
-
-          case "enum_declaration": {
-            const name = extractCSharpName(child);
-            if (!name) break;
-            symbols.push({
-              kind: "enum",
-              name,
-              signature: "",
-              startPosition: { line: range.start.line + 1, column: range.start.column + 1 },
-              endPosition: { line: range.end.line + 1, column: range.end.column + 1 },
-            });
-            topLevelDeclarations.push(name);
-            break;
-          }
-
-          case "using_directive": {
-            // Extract namespace from `using X.Y.Z;`
-            const ns = text.replace(/^using\s+/, "").replace(/;\s*$/, "").trim();
-            if (ns) {
-              imports.push({ source: ns, specifiers: ["*"], kind: "namespace" });
-            }
-            break;
-          }
-        }
-      }
-    } catch {
-      // C# parsing failed — return content without AST
+      const lineNum = content.substring(0, methodMatch.index).split("\n").length;
+      symbols.push({
+        kind: "function",
+        name,
+        signature: `(${params})`,
+        startPosition: { line: lineNum, column: 0 },
+        endPosition: { line: lineNum, column: 0 },
+      });
     }
 
     const functionCount = symbols.filter((s) => s.kind === "function").length;
@@ -588,16 +509,4 @@ function extractSignature(content: string, range: { start: { index: number }; en
   return parenMatch ? parenMatch[0] : "";
 }
 
-/**
- * Extract the name from a C# declaration node by looking for the first
- * `identifier` or `type_identifier` child.
- */
-function extractCSharpName(node: {
-  children(): { kind(): string; text(): string }[];
-}): string | null {
-  for (const c of node.children()) {
-    const k = c.kind();
-    if (k === "identifier" || k === "type_identifier") return c.text();
-  }
-  return null;
-}
+

@@ -2,6 +2,7 @@ import { readdirSync } from "fs";
 import { join } from "path";
 import type { FileFilter } from "../ports/FileFilter";
 import type { SourceParserRegistry } from "../ports/SourceParserRegistry";
+import type { Logger } from "../ports/Logger";
 import type { Chunker } from "../systems/ChunkingSystem";
 import type { EmbedderRegistry } from "../systems/EmbeddingSystem";
 import type { SourceRepository } from "../ports/SourceRepository";
@@ -25,6 +26,7 @@ export class IndexingService {
     private readonly embedderRegistry: EmbedderRegistry,
     private readonly repo: SourceRepository,
     private readonly hasher: Hasher,
+    private readonly logger?: Logger,
   ) {}
 
   /**
@@ -42,14 +44,33 @@ export class IndexingService {
     const files = this.scanDirectory(directory);
     const included = files.filter((f) => this.fileFilter.shouldInclude(f));
     let totalTokens = 0;
+    const totalFiles = included.length;
+    let processedFiles = 0;
+    let skippedCount = 0;
+    const startTime = Date.now();
+
+    this.logger?.info(`Scan complete: ${totalFiles} files to index`);
 
     for (const filePath of included) {
       const parser = this.parserRegistry.getParser(filePath);
-      if (!parser) continue;
+      if (!parser) { skippedCount++; continue; }
+
+      const relPath = filePath.replace(/\\/g, "/").split("/").slice(-3).join("/");
+      this.logger?.info(`[${processedFiles + 1}/${totalFiles}] ${relPath}`);
 
       const parsed = await parser.parse(filePath);
       const chunks = await this.chunker.chunk(parsed.content);
       const sourceId = crypto.randomUUID();
+
+      // Log progress every 50 files
+      processedFiles++;
+      if (processedFiles % 50 === 0 || (processedFiles > 0 && processedFiles === (totalFiles - skippedCount))) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        this.logger?.info(
+          `Progress: ${processedFiles}/${totalFiles - skippedCount} files (${elapsed}s)` +
+            ` | chunks: ${chunks.length} | tokens: ${totalTokens}`,
+        );
+      }
 
       // Enrich metadata with AST when available
       const metaWithAst = enrichMetadata(parsed.metadata, parsed.fileIndex);

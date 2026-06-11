@@ -512,11 +512,14 @@ export class LanceDbSourceRepository implements SourceRepository {
       if (dt && dt > maxDate) maxDate = dt;
     }
 
+    // Read total_tokens from db_meta (set by IndexUseCase.setDbMeta)
+    const dbTotalTokens = await this.getDbMeta("total_tokens");
+
     return {
       total_sources: uniquePaths.size,
       total_chunks: totalChunks,
       total_files: uniquePaths.size,
-      total_tokens: 0,
+      total_tokens: dbTotalTokens ? parseInt(dbTotalTokens, 10) || 0 : 0,
       last_indexed: maxDate || new Date().toISOString(),
     };
   }

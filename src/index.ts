@@ -117,9 +117,10 @@ function createFileFilter(config: Config): FileFilter {
     formats: extList,
     shouldInclude: (path: string) => {
       const normalised = path.replace(/\\/g, "/");
-      // Exclude patterns (substring match)
+      // Exclude patterns (match whole path segments only)
       for (const pat of exclude) {
-        if (normalised.includes(pat)) return false;
+        const segments = normalised.split("/");
+        if (segments.some((seg) => seg === pat)) return false;
       }
       // Include patterns (if specified, path must match at least one)
       if (include && include.length > 0) {
@@ -219,6 +220,7 @@ export function createApp(options?: CreateAppOptions): AppUseCases {
     embedderRegistry,
     repo,
     hasher,
+    logger,
   );
 
   const searchEmbedder =
