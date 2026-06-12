@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { SourceData, SearchResult } from "../../../src/domain/types";
-import { parseArgs, formatSearchResults, SEARCH_COLUMNS } from "../../../src/presentation/cli/cli";
+import { parseArgs, formatSearchResults, SEARCH_COLUMNS } from "../../../src/presentation/cli/format";
 
 describe("CLI argument parsing", () => {
   test("parses index command", () => {

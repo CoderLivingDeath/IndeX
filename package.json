@@ -17,6 +17,7 @@
     "@ast-grep/napi": "^0.43.0",
     "@lancedb/lancedb": "^0.30.0",
     "chokidar": "^5.0.0",
+    "commander": "^15.0.0",
     "gpt-tokenizer": "^3.4.0",
     "hash-wasm": "^4.11.0",
     "hono": "^4.12.23",
