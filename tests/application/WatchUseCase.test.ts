@@ -82,15 +82,14 @@ describe("WatchUseCase", () => {
       expect(started).toBe(true);
     });
 
-    test("calls diffService.diffIndex on change events", async () => {
+    test("calls diffService.diffIndexFile on change events", async () => {
       let diffCalled = false;
-      let capturedDir = "";
+      let capturedPath = "";
 
       const diffService = makeDiffService();
-      const originalDiff = diffService.diffIndex.bind(diffService);
-      diffService.diffIndex = async (dir: string) => {
+      diffService.diffIndexFile = async (filePath: string) => {
         diffCalled = true;
-        capturedDir = dir;
+        capturedPath = filePath;
         return { indexed: 1, skipped: 0, errors: 0 };
       };
 
@@ -113,14 +112,14 @@ describe("WatchUseCase", () => {
       }
 
       expect(diffCalled).toBe(true);
-      expect(capturedDir).toBe("./vault");
+      expect(capturedPath).toBe("/vault/file.ts");
     });
 
-    test("calls diffService.diffIndex on add events", async () => {
+    test("calls diffService.diffIndexFile on add events", async () => {
       let diffCalled = false;
 
       const diffService = makeDiffService();
-      diffService.diffIndex = async () => {
+      diffService.diffIndexFile = async () => {
         diffCalled = true;
         return { indexed: 1, skipped: 0, errors: 0 };
       };

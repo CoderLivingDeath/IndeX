@@ -101,8 +101,12 @@ export interface CreateAppOptions {
   testMode?: boolean;
   /** Embedder for search queries (default: OllamaEmbedder from first configured model). */
   searchEmbedder?: import("./domain/systems/EmbeddingSystem").Embedder;
-  /** Enable pretty-printed (pino-pretty) terminal output. */
+  /** Enable pretty-printed terminal output. */
   pretty?: boolean;
+  /** Directory to watch (default: "."). */
+  watchDir?: string;
+  /** Glob patterns to ignore in the watcher. */
+  watchIgnored?: string[];
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -289,7 +293,9 @@ export function createApp(options?: CreateAppOptions): AppUseCases {
     logger,
   } satisfies EmbedSystems);
 
-  const watcher = new ChokidarWatcher(".");
+  const watcher = new ChokidarWatcher(options?.watchDir ?? ".", {
+    ignored: options?.watchIgnored,
+  });
   const watch = new WatchUseCase(watcher, diffIndexingService, logger);
 
   const del = new DeleteUseCase(repo);

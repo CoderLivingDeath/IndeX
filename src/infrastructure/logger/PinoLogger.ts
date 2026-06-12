@@ -1,5 +1,7 @@
 import pino from "pino";
+import { Writable } from "stream";
 import type { Logger } from "../../domain/ports/Logger";
+import { prettyWriter } from "./prettyWriter";
 
 export interface PinoLoggerOptions {
   level?: string;
@@ -22,9 +24,16 @@ export class PinoLogger implements Logger {
     const base = module ? { module } : {};
 
     const stream = destination ?? (pretty
-      ? pino.transport({
-          target: "pino-pretty",
-          options: { colorize: true, translateTime: "SYS:HH:MM:ss" },
+      ? new Writable({
+          write(chunk, _encoding, callback) {
+            const line = chunk.toString().trimEnd();
+            if (line) {
+              const fmt = prettyWriter();
+              process.stdout.write(fmt(line) + "\n");
+            }
+            callback();
+          },
+          objectMode: false,
         })
       : undefined);
 

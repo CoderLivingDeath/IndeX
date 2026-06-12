@@ -32,14 +32,14 @@ export class WatchUseCase {
 
     this.watcher.on("add", (path: string) => {
       this.logger.info(`File added: ${path}`);
-      this.diffService.diffIndex(directory).catch((err) => {
+      this.diffService.diffIndexFile(path).catch((err) => {
         this.logger.error(`Diff indexing error: ${err}`);
       });
     });
 
     this.watcher.on("change", (path: string) => {
       this.logger.info(`File changed: ${path}`);
-      this.diffService.diffIndex(directory).catch((err) => {
+      this.diffService.diffIndexFile(path).catch((err) => {
         this.logger.error(`Diff indexing error: ${err}`);
       });
     });

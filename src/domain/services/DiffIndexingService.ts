@@ -16,21 +16,21 @@ export interface DiffIndexResult {
   errors: number;
 }
 
-/**
- * Incremental / differential indexing service.
- *
- * For every file that matches the filter:
- *  1. Compute the current `file_blake3`.
- *  2. Compare against the stored hash.
- *  3. **Match** → skip (no re-processing).
- *  4. **Mismatch** (or new file) → re-process: parse → chunk → embed →
- *     delete old chunks → upsert new ones → rebuild FileIndex.
- *
- * Cross-file semantic dedup is implicit: old chunks are deleted via
- * `deleteByPath` (scoped to the changed file only), so shared hashes
- * survive via other files that still reference them.
- */
 export class DiffIndexingService {
+  /**
+   * Incremental / differential indexing service.
+   *
+   * For every file that matches the filter:
+   *  1. Compute the current `file_blake3`.
+   *  2. Compare against the stored hash.
+   *  3. **Match** → skip (no re-processing).
+   *  4. **Mismatch** (or new file) → re-process: parse → chunk → embed →
+   *     delete old chunks → upsert new ones → rebuild FileIndex.
+   *
+   * Cross-file semantic dedup is implicit: old chunks are deleted via
+   * `deleteByPath` (scoped to the changed file only), so shared hashes
+   * survive via other files that still reference them.
+   */
   constructor(
     private readonly hasher: Hasher,
     private readonly parserRegistry: SourceParserRegistry,
@@ -39,6 +39,34 @@ export class DiffIndexingService {
     private readonly repo: SourceRepository,
     private readonly fileFilter: FileFilter,
   ) {}
+
+  /**
+   * Process a single file for changes. Used by the watch daemon to avoid
+   * scanning the entire directory on every event.
+   *
+   * Returns `{ indexed: 1 }` if the file was re-processed,
+   * `{ skipped: 1 }` if unchanged, or `{ errors: 1 }` on failure.
+   */
+  async diffIndexFile(filePath: string): Promise<DiffIndexResult> {
+    try {
+      if (!this.fileFilter.shouldInclude(filePath)) {
+        return { indexed: 0, skipped: 1, errors: 0 };
+      }
+
+      const content = await Bun.file(filePath).text();
+      const currentHash = await this.hasher.hash(content);
+      const storedHash = await this.repo.getFileBlake3ByPath(filePath);
+
+      if (storedHash === currentHash) {
+        return { indexed: 0, skipped: 1, errors: 0 };
+      }
+
+      await this.reprocessFile(filePath, currentHash);
+      return { indexed: 1, skipped: 0, errors: 0 };
+    } catch {
+      return { indexed: 0, skipped: 0, errors: 1 };
+    }
+  }
 
   async diffIndex(directory: string): Promise<DiffIndexResult> {
     const files = scanDirectory(directory);

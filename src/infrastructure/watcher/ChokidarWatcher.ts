@@ -4,6 +4,8 @@ import type { FileWatcher } from "../../domain/ports/FileWatcher";
 export interface ChokidarWatcherOptions {
   /** Debounce interval in milliseconds (default: 500). */
   debounceMs?: number;
+  /** Glob patterns to ignore (passed to chokidar). */
+  ignored?: string[];
 }
 
 /**
@@ -19,10 +21,12 @@ export class ChokidarWatcher implements FileWatcher {
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly debounceMs: number;
   private readonly paths: string[];
+  private readonly ignored: string[];
 
   constructor(paths: string | string[], options?: ChokidarWatcherOptions) {
     this.paths = Array.isArray(paths) ? paths : [paths];
     this.debounceMs = options?.debounceMs ?? 500;
+    this.ignored = options?.ignored ?? [];
   }
 
   on(event: "add" | "change" | "unlink", cb: (path: string) => void): void {
@@ -35,6 +39,7 @@ export class ChokidarWatcher implements FileWatcher {
     this.watcher = watch(this.paths, {
       ignoreInitial: true,
       persistent: true,
+      ignored: this.ignored.length > 0 ? this.ignored : undefined,
     });
 
     return new Promise<void>((resolve) => {
