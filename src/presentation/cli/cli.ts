@@ -11,6 +11,7 @@ import { registerEmbed } from "./commands/embed";
 import { registerStats } from "./commands/stats";
 import { registerClear } from "./commands/clear";
 import { registerWatch } from "./commands/watch";
+import { registerScan } from "./commands/scan";
 
 // Re-export for backward compatibility (tests)
 export { parseArgs, formatSearchResults, SEARCH_COLUMNS } from "./format";
@@ -37,6 +38,7 @@ export function createProgram(): Command {
   registerStats(program);
   registerClear(program);
   registerWatch(program);
+  registerScan(program);
 
   return program;
 }
