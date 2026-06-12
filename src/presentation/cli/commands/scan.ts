@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { existsSync } from "fs";
-import { relative } from "path";
+import { relative, resolve } from "path";
 import type { Command } from "commander";
 import { scanDirectory } from "../../../shared/fileUtils";
 import { matchesAny, filterByGlob } from "../../../shared/globMatcher";
@@ -77,12 +77,13 @@ export function registerScan(program: Command): void {
           showAll?: boolean;
         },
       ) => {
-        if (!existsSync(path)) {
-          console.error(`Error: directory not found: ${path}`);
+        const resolvedPath = resolve(path);
+        if (!existsSync(resolvedPath)) {
+          console.error(`Error: directory not found: ${resolvedPath}`);
           return;
         }
 
-        const baseDir = path;
+        const baseDir = resolvedPath;
         const showAll = options.showAll ?? false;
 
         // ── 1. Scan all files ────────────────────────────────────

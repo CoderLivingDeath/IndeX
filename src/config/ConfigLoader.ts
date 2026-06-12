@@ -65,7 +65,7 @@ export type Config = z.infer<typeof ConfigSchema>;
 
 // ── Defaults ──────────────────────────────────────────────────────
 
-const defaultConfig: Config = {
+export const defaultConfig: Config = {
   models: [{ name: "qllama/multilingual-e5-small", dimensions: 384, provider: "ollama" }],
   universal_model: "qllama/multilingual-e5-small",
   embedder: { batch_size: 10, cache_size: 100 },
@@ -80,7 +80,18 @@ const defaultConfig: Config = {
     hybrid_weight: 0.7,
   },
   indexing: {
-    exclude: ["node_modules", ".git", ".tmp", "dist", "build", ".opencode"],
+    exclude: [
+      "**/node_modules/**",
+      "**/.git/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.tmp/**",
+      "**/.opencode/**",
+      "**/.venv/**",
+      "**/__pycache__/**",
+      "**/target/**",
+      "**/vendor/**",
+    ],
   },
 };
 

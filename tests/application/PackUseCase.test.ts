@@ -137,7 +137,7 @@ describe("PackUseCase", () => {
 
     // ── test 3: structured format has file index and metadata ──
     test("packed markdown has file index table and per-file metadata", async () => {
-      const result = await useCase.execute(tmpDir);
+      const result = await useCase.execute(tmpDir, { format: "md" });
       // Should have File Index table of contents
       expect(result.markdown).toContain("## File Index");
       expect(result.markdown).toContain("| # | Path | Language | Lines | Tokens |");

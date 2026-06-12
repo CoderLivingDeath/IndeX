@@ -12,6 +12,7 @@ import { registerStats } from "./commands/stats";
 import { registerClear } from "./commands/clear";
 import { registerWatch } from "./commands/watch";
 import { registerScan } from "./commands/scan";
+import { registerInit } from "./commands/init";
 
 // Re-export for backward compatibility (tests)
 export { parseArgs, formatSearchResults, SEARCH_COLUMNS } from "./format";
@@ -39,6 +40,7 @@ export function createProgram(): Command {
   registerClear(program);
   registerWatch(program);
   registerScan(program);
+  registerInit(program);
 
   return program;
 }

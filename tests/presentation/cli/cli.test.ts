@@ -66,6 +66,18 @@ describe("CLI argument parsing", () => {
     expect(result.args).toEqual([]);
   });
 
+  test("parses init command", () => {
+    const result = parseArgs(["init"]);
+    expect(result.command).toBe("init");
+    expect(result.args).toEqual([]);
+  });
+
+  test("parses init command with --path flag", () => {
+    const result = parseArgs(["init", "--path", "./my-project"]);
+    expect(result.command).toBe("init");
+    expect(result.flags.path).toBe("./my-project");
+  });
+
   test("parses --help flag", () => {
     const result = parseArgs(["--help"]);
     expect(result.command).toBe("help");

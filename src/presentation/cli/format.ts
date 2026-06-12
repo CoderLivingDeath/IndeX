@@ -28,7 +28,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   const validCommands = [
     "index", "search", "pack", "chunk", "embed",
-    "watch", "watch-daemon", "stats", "clear",
+    "watch", "watch-daemon", "stats", "clear", "init",
     "--help", "-h",
   ];
   const first = argv[0] ?? "";

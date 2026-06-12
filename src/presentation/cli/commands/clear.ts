@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { rmSync } from "fs";
-import { join } from "path";
+import { resolve } from "path";
 import type { Command } from "commander";
 
 export function registerClear(program: Command): void {
@@ -11,7 +11,7 @@ export function registerClear(program: Command): void {
     .command("clear")
     .description("Clear all indexed data")
     .action(() => {
-      const dbDir = join(process.cwd(), ".indeX", "index.lancedb");
+      const dbDir = resolve(".indeX", "index.lancedb");
       rmSync(dbDir, { recursive: true, force: true });
       console.log("Index cleared.");
     });

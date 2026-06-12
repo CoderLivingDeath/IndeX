@@ -7,7 +7,7 @@
 // fenced code blocks.
 // ---------------------------------------------------------------------------
 
-import { relative } from "path";
+import { relative, resolve } from "path";
 import type { PackSystems } from "./di/Systems";
 import type { PackedContext } from "../domain/systems/ContextPackagingSystem";
 import type { ParsedSource } from "../domain/types";
@@ -33,6 +33,16 @@ export interface PackOptions {
   exclude?: string[];
   /** Token budget — when specified the output is truncated. */
   maxTokens?: number;
+  /** Output format: "md" (markdown for humans) or "jsonl" (compact JSON lines). Default "jsonl". */
+  format?: "md" | "jsonl";
+  /** Include metadata block (type, language, lines, tokens, tags, path, blake3). Default true. */
+  meta?: boolean;
+  /** Include AST JSONL section (imports, exports, symbols, complexity). Default true. */
+  ast?: boolean;
+  /** Include code/content block. Default true. */
+  content?: boolean;
+  /** Include relationships/links section (cross-file references). Default true. */
+  links?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -100,7 +110,7 @@ function extractExt(relPath: string): string {
   return idx >= 0 ? relPath.slice(idx).toLowerCase() : "";
 }
 
-/** Build AST JSONL lines from a FileIndex. */
+/** Build AST JSONL lines (imports, exports, symbols, complexity) from a FileIndex. */
 function astJsonl(fileIndex: NonNullable<ParsedSource["fileIndex"]>): string {
   const lines: string[] = [];
 
@@ -119,9 +129,6 @@ function astJsonl(fileIndex: NonNullable<ParsedSource["fileIndex"]>): string {
       line: sym.startPosition.line,
     }));
   }
-  for (const rel of fileIndex.relationships) {
-    lines.push(JSON.stringify({ kind: "relationship", type: rel.type, source: rel.source, target: rel.target }));
-  }
   lines.push(JSON.stringify({
     kind: "complexity",
     functions: fileIndex.symbols.filter((s) => s.kind === "function" || s.kind === "method").length,
@@ -133,10 +140,163 @@ function astJsonl(fileIndex: NonNullable<ParsedSource["fileIndex"]>): string {
   return lines.join("\n");
 }
 
+/** Build links/relationships JSONL lines from a FileIndex. */
+function linksJsonl(fileIndex: NonNullable<ParsedSource["fileIndex"]>): string {
+  return fileIndex.relationships
+    .map((rel) => JSON.stringify({ kind: "relationship", type: rel.type, source: rel.source, target: rel.target }))
+    .join("\n");
+}
+
 /** HTML-escape content for embedding in `<pre><code>` blocks. */
 function htmlEscape(raw: string): string {
   // Only &, <, > need escaping — backticks/headings inside <pre> are inert.
   return raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// ── Output builders ──────────────────────────────────────────────
+
+/** Build markdown output with file index + per-file sections. */
+function buildOutputMd(
+  entries: FileEntry[],
+  directory: string,
+  showMeta: boolean,
+  showAst: boolean,
+  showContent: boolean,
+  showLinks: boolean,
+  maxTokens: number,
+): string {
+  const parts: string[] = [];
+  let totalTokens = 0;
+
+  // File index table of contents
+  if (entries.length > 0) {
+    parts.push("## File Index\n\n");
+    parts.push("| # | Path | Language | Lines | Tokens |\n");
+    parts.push("|---|------|----------|-------|--------|\n");
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i]!;
+      const ext = extractExt(e.relPath);
+      const lang = inferLanguage(e.parsed, ext);
+      parts.push(`| ${i + 1} | ${e.relPath} | ${lang} | ${e.lines} | ${e.tokens} |\n`);
+    }
+    parts.push("\n");
+  }
+
+  const hasAnySection = showMeta || showAst || showContent || showLinks;
+
+  for (const entry of entries) {
+    if (totalTokens >= maxTokens) break;
+    const headerTokens = estimateTokens(parts.join(""));
+    const blockTokens = entry.tokens + headerTokens;
+    if (totalTokens + blockTokens > maxTokens && parts.length > 0) break;
+
+    if (!hasAnySection) continue;
+
+    parts.push(`## ${entry.relPath}\n`);
+
+    if (showMeta) {
+      parts.push(metadataBlock(entry, directory));
+      parts.push("\n\n");
+    }
+
+    if (showAst && entry.parsed.fileIndex) {
+      const jsonl = astJsonl(entry.parsed.fileIndex);
+      if (jsonl) {
+        parts.push("### ast\n");
+        parts.push(jsonl);
+        parts.push("\n\n");
+      }
+    }
+
+    if (showLinks && entry.parsed.fileIndex && entry.parsed.fileIndex.relationships.length > 0) {
+      parts.push("### links\n");
+      parts.push(linksJsonl(entry.parsed.fileIndex));
+      parts.push("\n\n");
+    }
+
+    if (showContent) {
+      const ext = extractExt(entry.relPath);
+      const lang = inferLanguage(entry.parsed, ext);
+      const isCode = entry.parsed.type === "code" || entry.parsed.type === "generic";
+      const escapedContent = htmlEscape(entry.parsed.content);
+      const sectionLabel = isCode ? "code" : "content";
+      parts.push(`### ${sectionLabel}\n`);
+      parts.push(`<pre><code class="language-${lang.toLowerCase()}">\n`);
+      parts.push(escapedContent);
+      parts.push("\n</code></pre>\n\n");
+    }
+
+    totalTokens = estimateTokens(parts.join(""));
+  }
+
+  return parts.join("");
+}
+
+/** Build JSONL output — one JSON object per file per line. */
+function buildOutputJsonl(
+  entries: FileEntry[],
+  showMeta: boolean,
+  showAst: boolean,
+  showContent: boolean,
+  showLinks: boolean,
+  maxTokens: number,
+): { output: string; totalTokens: number } {
+  const lines: string[] = [];
+  let totalChars = 0;
+
+  for (const entry of entries) {
+    if (totalChars > 0 && estimateTokens(lines.join("\n")) >= maxTokens) break;
+
+    const obj: Record<string, unknown> = {};
+
+    // Always included: path + type + language + lines + tokens
+    const ext = extractExt(entry.relPath);
+    const lang = inferLanguage(entry.parsed, ext);
+    obj.path = entry.relPath;
+    obj.type = entry.parsed.type ?? "generic";
+    obj.language = lang;
+    obj.lines = entry.lines;
+    obj.tokens = entry.tokens;
+
+    // Meta: blake3, last_parsed, tags
+    if (showMeta) {
+      obj.blake3 = entry.parsed.file_blake3;
+      obj.last_parsed = entry.parsed.last_parsed;
+      if (entry.parsed.tags && entry.parsed.tags.length > 0) {
+        obj.tags = entry.parsed.tags;
+      }
+    }
+
+    // AST: imports, exports, symbols, complexity
+    if (showAst && entry.parsed.fileIndex) {
+      const fi = entry.parsed.fileIndex;
+      if (fi.imports.length > 0) obj.imports = fi.imports;
+      if (fi.exports.length > 0) obj.exports = fi.exports;
+      if (fi.symbols.length > 0) obj.symbols = fi.symbols;
+      obj.complexity = {
+        functions: fi.symbols.filter((s) => s.kind === "function" || s.kind === "method").length,
+        classes: fi.symbols.filter((s) => s.kind === "class").length,
+        types: fi.symbols.filter((s) => s.kind === "type" || s.kind === "interface").length,
+      };
+    }
+
+    // Links / relationships
+    if (showLinks && entry.parsed.fileIndex && entry.parsed.fileIndex.relationships.length > 0) {
+      obj.relationships = entry.parsed.fileIndex.relationships;
+    }
+
+    // Content
+    if (showContent) {
+      obj.content = entry.parsed.content;
+    }
+
+    const line = JSON.stringify(obj);
+    lines.push(line);
+    totalChars += line.length + 1; // +1 for newline
+  }
+
+  const output = lines.join("\n") + (lines.length > 0 ? "\n" : "");
+  return { output, totalTokens: estimateTokens(output) };
 }
 
 // ── Use Case ─────────────────────────────────────────────────────
@@ -164,8 +324,16 @@ export class PackUseCase {
       this.systems.fileFilter.shouldInclude(f),
     );
 
-    // 3. Apply PackOptions include/exclude (proper glob matching via micromatch)
-    matched = filterByGlob(matched, options);
+    // 3. Resolve include/exclude patterns to absolute (relative to directory)
+    //    so they match against the absolute paths from scanDirectory.
+    const resolvedOptions = options
+      ? {
+          ...options,
+          include: options.include?.map((p) => resolve(directory, p).replace(/\\/g, "/")),
+          exclude: options.exclude?.map((p) => resolve(directory, p).replace(/\\/g, "/")),
+        }
+      : undefined;
+    matched = filterByGlob(matched, resolvedOptions);
 
     // 4. Parse all files into entries (two-pass: first parse all for TOC)
     const entries: FileEntry[] = [];
@@ -181,73 +349,43 @@ export class PackUseCase {
       entries.push({ relPath, parsed, tokens, lines });
     }
 
-    // 5. Build output
-    const markdownParts: string[] = [];
+    // 5. Determine section visibility
+    const hasExplicitSection =
+      options?.meta !== undefined ||
+      options?.ast !== undefined ||
+      options?.content !== undefined ||
+      options?.links !== undefined;
+
+    const showMeta    = hasExplicitSection ? options?.meta    === true : true;
+    const showAst     = hasExplicitSection ? options?.ast     === true : true;
+    const showContent = hasExplicitSection ? options?.content === true : true;
+    const showLinks   = hasExplicitSection ? options?.links   === true : false;
+    const format      = options?.format ?? "jsonl";
+
+    // 6. Build output in requested format
+    let output: string;
     let totalTokens = 0;
     const maxTokens = options?.maxTokens ?? Number.POSITIVE_INFINITY;
 
-    // 5a. File index table of contents
-    if (entries.length > 0) {
-      markdownParts.push("## File Index\n\n");
-      markdownParts.push("| # | Path | Language | Lines | Tokens |\n");
-      markdownParts.push("|---|------|----------|-------|--------|\n");
-      for (let i = 0; i < entries.length; i++) {
-        const e = entries[i]!;
-        const ext = extractExt(e.relPath);
-        const lang = inferLanguage(e.parsed, ext);
-        markdownParts.push(`| ${i + 1} | ${e.relPath} | ${lang} | ${e.lines} | ${e.tokens} |\n`);
-      }
-      markdownParts.push("\n");
+    if (format === "md") {
+      output = buildOutputMd(entries, directory, showMeta, showAst, showContent, showLinks, maxTokens);
+      totalTokens = estimateTokens(output);
+    } else {
+      const result = buildOutputJsonl(entries, showMeta, showAst, showContent, showLinks, maxTokens);
+      output = result.output;
+      totalTokens = result.totalTokens;
     }
 
-    // 5b. Per-file sections
-    for (const entry of entries) {
-      if (totalTokens >= maxTokens) break;
-
-      const headerTokens = estimateTokens(markdownParts.join(""));
-      const blockTokens = entry.tokens + headerTokens;
-
-      if (totalTokens + blockTokens > maxTokens && markdownParts.length > 0) {
-        break;
-      }
-
-      // File section header
-      markdownParts.push(`## ${entry.relPath}\n`);
-      markdownParts.push(metadataBlock(entry, directory));
-      markdownParts.push("\n\n");
-
-      // AST JSONL section (code files only)
-      if (entry.parsed.fileIndex) {
-        markdownParts.push("### ast\n");
-        markdownParts.push(astJsonl(entry.parsed.fileIndex));
-        markdownParts.push("\n\n");
-      }
-
-      // Code / content block
-      const ext = extractExt(entry.relPath);
-      const lang = inferLanguage(entry.parsed, ext);
-      const isCode = entry.parsed.type === "code" || entry.parsed.type === "generic";
-      const escapedContent = htmlEscape(entry.parsed.content);
-      const sectionLabel = isCode ? "code" : "content";
-      markdownParts.push(`### ${sectionLabel}\n`);
-      markdownParts.push(`<pre><code class="language-${lang.toLowerCase()}">\n`);
-      markdownParts.push(escapedContent);
-      markdownParts.push("\n</code></pre>\n\n");
-
-      totalTokens = estimateTokens(markdownParts.join(""));
-    }
-
-    const markdown = markdownParts.join("");
     const truncated = totalTokens >= maxTokens;
 
     this.systems.logger.info(
-      `Packed ${entries.length} files, ${totalTokens} tokens${
+      `Packed ${entries.length} files, ${totalTokens} tokens [${format}]${
         truncated ? " (truncated)" : ""
       }`,
     );
 
     return {
-      markdown,
+      markdown: output,
       chunks_used: entries.length,
       total_tokens: totalTokens,
       truncated,

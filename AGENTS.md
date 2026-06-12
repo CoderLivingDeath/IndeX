@@ -8,7 +8,7 @@ Bun + TypeScript app for indexing notes and code into LanceDB with hybrid (vecto
 
 ```bash
 bun install
-bun test                                  # all tests (481 pass)
+bun test                                  # all tests (495 pass)
 bun test tests/domain/types.test.ts       # single file
 bun test --coverage                       # coverage report
 
@@ -67,7 +67,10 @@ bun run src/presentation/cli/cli.ts search "query" --mode hybrid --top-k 5 --tag
 bun run src/presentation/cli/cli.ts search "query" --mode ast --columns path,score,ast,content  # AST search
 bun run src/presentation/cli/cli.ts search "class" --ast --top-k 3                              # --ast shortcut
 bun run src/presentation/cli/cli.ts scan ./path                           # dry-run file filters
+bun run src/presentation/cli/cli.ts pack .                                 # stdout (default: meta+ast+content)
 bun run src/presentation/cli/cli.ts pack . -o bundle.md --include "**/*.ts" --exclude "**/*.test.ts"
+bun run src/presentation/cli/cli.ts pack . --meta --content                # only metadata + code
+bun run src/presentation/cli/cli.ts pack . --links                         # only cross-file links
 bun run src/presentation/cli/cli.ts chunk ./path
 bun run src/presentation/cli/cli.ts embed ./path
 bun run src/presentation/cli/cli.ts stats
@@ -108,6 +111,36 @@ Use `--columns` to control output fields (comma-separated):
 | `timestamps` | Created/updated timestamps |
 | `model_scores` | Per-model scores in multi-model mode |
 | `embedding` | Raw embedding vector |
+
+### Pack output sections & format
+
+The `pack` command outputs sections per file. By default (no flags) it
+includes meta + ast + content. Pass any combination to override defaults:
+
+| Flag | Section | Description |
+|------|---------|-------------|
+| `--meta` | metadata block | type, language, lines, tokens, tags, path, blake3, last_parsed |
+| `--ast` | `### ast` | JSONL: imports, exports, symbols, complexity |
+| `--content` | `### code` / `### content` | Fenced `<pre><code>` block with file content |
+| `--links` | `### links` | JSONL: cross-file relationships |
+
+Use `--format` to choose output format:
+
+| Format | Description |
+|--------|-------------|
+| `jsonl` (default) | One JSON line per file — compact, easy to parse |
+| `md` | Full markdown with file index, metadata, AST, code blocks |
+
+```bash
+bun run src/presentation/cli/cli.ts pack .                                 # jsonl (default): meta+ast+content
+bun run src/presentation/cli/cli.ts pack . --format md                     # markdown: meta+ast+content
+bun run src/presentation/cli/cli.ts pack . --format md --content           # markdown: only code
+bun run src/presentation/cli/cli.ts pack . --meta --ast --content --links  # jsonl: all sections
+bun run src/presentation/cli/cli.ts pack . --format md -o bundle.md        # markdown → file + stdout
+```
+
+The output always goes to stdout (full terminal display). The `-o` flag
+additionally writes the output to a file.
 
 ### scan — preview file filters
 

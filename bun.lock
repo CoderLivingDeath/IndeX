@@ -6,6 +6,8 @@
       "name": "index",
       "dependencies": {
         "@ast-grep/lang-csharp": "^0.0.6",
+        "@ast-grep/lang-json": "^0.0.7",
+        "@ast-grep/lang-python": "^0.0.6",
         "@ast-grep/napi": "^0.43.0",
         "@lancedb/lancedb": "^0.30.0",
         "chokidar": "^5.0.0",
@@ -31,8 +33,17 @@
       },
     },
   },
+  "trustedDependencies": [
+    "@ast-grep/lang-python",
+    "@ast-grep/lang-json",
+    "@ast-grep/lang-csharp",
+  ],
   "packages": {
     "@ast-grep/lang-csharp": ["@ast-grep/lang-csharp@0.0.6", "", { "dependencies": { "@ast-grep/setup-lang": "0.0.6" }, "peerDependencies": { "tree-sitter-cli": "0.25.8" }, "optionalPeers": ["tree-sitter-cli"] }, "sha512-9Aq0WvJ5wRdJ+iply7H2Aq89o2BOdxFXh3H9tLvf8DryyHgWAQA/CRKUw1HjV8Q4ABUZFl1vLq9Uv3t0gQtZdQ=="],
+
+    "@ast-grep/lang-json": ["@ast-grep/lang-json@0.0.7", "", { "dependencies": { "@ast-grep/setup-lang": "0.0.6" }, "peerDependencies": { "tree-sitter-cli": "0.25.8" }, "optionalPeers": ["tree-sitter-cli"] }, "sha512-8wiH+B4Rih8/vHsUB4DOTXnQHMxfWhaBygUEZ036kfr1T9WFvx5E7QYd2WX2Wm1nFCzUmWbIfsoE+cR2G9SJlA=="],
+
+    "@ast-grep/lang-python": ["@ast-grep/lang-python@0.0.6", "", { "dependencies": { "@ast-grep/setup-lang": "0.0.6" }, "peerDependencies": { "tree-sitter-cli": "0.25.8" }, "optionalPeers": ["tree-sitter-cli"] }, "sha512-eF/bEBspmrxdVuPNihvZDyyJx5qtIpGEMz9l1nNQmrji7NZcUiRNC8WwzYyQCBdy1mj8HZ0Tn4I2q3gp/6Bkiw=="],
 
     "@ast-grep/napi": ["@ast-grep/napi@0.43.0", "", { "optionalDependencies": { "@ast-grep/napi-darwin-arm64": "0.43.0", "@ast-grep/napi-darwin-x64": "0.43.0", "@ast-grep/napi-linux-arm64-gnu": "0.43.0", "@ast-grep/napi-linux-arm64-musl": "0.43.0", "@ast-grep/napi-linux-x64-gnu": "0.43.0", "@ast-grep/napi-linux-x64-musl": "0.43.0", "@ast-grep/napi-win32-arm64-msvc": "0.43.0", "@ast-grep/napi-win32-ia32-msvc": "0.43.0", "@ast-grep/napi-win32-x64-msvc": "0.43.0" } }, "sha512-dPugC04xwgk3gJl17jJvTjVjx1IXtWI9EcEQ0szlh0jg1UfvGDdZJo9/S9Pk7gzGBNd2bW8hIL3dG6K4T8PEJA=="],
 

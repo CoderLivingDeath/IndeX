@@ -47,9 +47,9 @@ describe("ParserRegistry", () => {
     expect(parser).toBe(obsParser);
   });
 
-  it("getParser('.py') returns null for unsupported extension", () => {
+  it("getParser('.py') returns AstGrepParser (now supported)", () => {
     const parser = registry.getParser("script.py");
-    expect(parser).toBeNull();
+    expect(parser).toBe(tsParser);
   });
 
   it("getParser('.unknown') returns null", () => {

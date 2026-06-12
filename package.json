@@ -14,6 +14,8 @@
   },
   "dependencies": {
     "@ast-grep/lang-csharp": "^0.0.6",
+    "@ast-grep/lang-json": "^0.0.7",
+    "@ast-grep/lang-python": "^0.0.6",
     "@ast-grep/napi": "^0.43.0",
     "@lancedb/lancedb": "^0.30.0",
     "chokidar": "^5.0.0",
@@ -29,5 +31,10 @@
     "remark-gfm": "^4.0.0",
     "yaml": "^2.6.0",
     "zod": "^3.23.0"
-  }
+  },
+  "trustedDependencies": [
+    "@ast-grep/lang-csharp",
+    "@ast-grep/lang-json",
+    "@ast-grep/lang-python"
+  ]
 }
