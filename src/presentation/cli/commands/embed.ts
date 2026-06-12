@@ -9,11 +9,11 @@ import { loadApp } from "../app-loader";
 export function registerEmbed(program: Command): void {
   program
     .command("embed <path>")
-    .description("Generate embeddings for files")
+    .description("Scan, parse, chunk, embed, and save all supported files to LanceDB")
     .action(async (path: string) => {
       const app = await loadApp();
       const resolvedPath = resolve(path);
-      await app.embed.execute({ source: "files", directory: resolvedPath });
-      console.log(`Embedding complete for ${resolvedPath}`);
+      const stats = await app.index.execute(resolvedPath);
+      console.log(`Indexed ${stats.total_files} files, ${stats.total_chunks} chunks (${stats.total_deduped_chunks} deduped)`);
     });
 }

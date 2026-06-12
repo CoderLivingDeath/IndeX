@@ -3,7 +3,6 @@
 // ---------------------------------------------------------------------------
 
 import { Command } from "commander";
-import { registerIndex } from "./commands/index";
 import { registerSearch } from "./commands/search";
 import { registerPack } from "./commands/pack";
 import { registerChunk } from "./commands/chunk";
@@ -31,7 +30,6 @@ export function createProgram(): Command {
     .usage("<command> [args] [options]");
 
   // Register commands — each imports its own dependencies lazily
-  registerIndex(program);
   registerSearch(program);
   registerPack(program);
   registerChunk(program);

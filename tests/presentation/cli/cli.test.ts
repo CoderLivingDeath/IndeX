@@ -7,9 +7,9 @@ import type { SourceData, SearchResult } from "../../../src/domain/types";
 import { parseArgs, formatSearchResults, SEARCH_COLUMNS } from "../../../src/presentation/cli/format";
 
 describe("CLI argument parsing", () => {
-  test("parses index command", () => {
-    const result = parseArgs(["index", "./vault"]);
-    expect(result.command).toBe("index");
+  test("parses embed command", () => {
+    const result = parseArgs(["embed", "./vault"]);
+    expect(result.command).toBe("embed");
     expect(result.args).toEqual(["./vault"]);
   });
 
