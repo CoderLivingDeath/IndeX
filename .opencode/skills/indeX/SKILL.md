@@ -46,7 +46,7 @@ indeX pack . --format md --meta --content
 
 | Command | Description |
 |---------|-------------|
-| `init` | Create `.indeX/config.json` with defaults |
+| `init` | Create `.indeX/config.json` (+ `--agent opencode` for `.opencode/skills/`) |
 | `embed <path>` | Scan, parse, chunk, embed, save to LanceDB |
 | `search <query>` | Search with modes + custom columns |
 | `pack <path>` | Bundle files into JSONL (default) or MD |
@@ -61,6 +61,17 @@ indeX pack . --format md --meta --content
 Heavy commands (embed, search, pack, chunk, stats) lazy-load native
 modules on first call (~5s), then cached. `init`, `clear`, `scan`, `watch` are
 lightweight (no native imports).
+
+### `init --agent opencode`
+
+Creates `.opencode/skills/indeX/SKILL.md` alongside the config — so AI agents
+get this skill automatically in new projects:
+
+```bash
+indeX init --agent opencode
+# → .indeX/config.json
+# → .opencode/skills/indeX/SKILL.md
+```
 
 ---
 

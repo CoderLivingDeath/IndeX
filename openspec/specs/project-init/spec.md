@@ -35,3 +35,18 @@ The project SHALL have the full source and test directory structure.
 #### Scenario: test directories exist
 - **WHEN** checking the `tests/` directory
 - **THEN** all subdirectories mirroring `src/` exist (domain, infrastructure, application, fixtures, mocks)
+
+### Requirement: AI agent scaffolding via --agent flag
+The `init` command SHALL support creating AI agent configuration alongside the default config.
+
+#### Scenario: --agent opencode creates skill file
+- **WHEN** running `indeX init --agent opencode`
+- **THEN** `.opencode/skills/indeX/SKILL.md` SHALL be created alongside `.indeX/config.json`
+
+#### Scenario: Skill file content
+- **WHEN** the skill file is created
+- **THEN** it SHALL contain full documentation of all indeX commands, search modes, pack sections, configuration, architecture, best practices, and troubleshooting
+
+#### Scenario: No agent flag — only config
+- **WHEN** running `indeX init` without `--agent`
+- **THEN** only `.indeX/config.json` SHALL be created (no skill file)

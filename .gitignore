@@ -5,9 +5,7 @@ build/
 *.tsbuildinfo
 
 # IndeX data
-.indeX/data/
-.indeX/index.lancedb/
-.indeX/config.json
+.indeX/
 
 # Editor
 .vscode/settings.json
@@ -25,3 +23,4 @@ Thumbs.db
 
 # Temp files
 .tmp/
+tmp/

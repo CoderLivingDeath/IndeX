@@ -28,4 +28,7 @@ export interface SourceRepository {
   /** Get all database metadata as a flat object. */
   getAllDbMeta(): Promise<Record<string, unknown>>;
   dropAll(): Promise<void>;
+
+  /** Get all distinct file paths currently stored in the index. */
+  getAllPaths(): Promise<string[]>;
 }

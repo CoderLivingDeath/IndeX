@@ -638,6 +638,24 @@ export class LanceDbSourceRepository implements SourceRepository {
     return result;
   }
 
+  // ── Path queries ───────────────────────────────────────────
+
+  async getAllPaths(): Promise<string[]> {
+    const table = await this.getSourcesTable();
+    if (!table) return [];
+
+    const rows = await table.query()
+      .select(["path"])
+      .toArray();
+
+    const pathSet = new Set<string>();
+    for (const r of rows) {
+      const p = (r as Record<string, unknown>).path;
+      if (typeof p === "string") pathSet.add(p);
+    }
+    return Array.from(pathSet);
+  }
+
   // ── Cleanup ────────────────────────────────────────────────
 
   async dropAll(): Promise<void> {

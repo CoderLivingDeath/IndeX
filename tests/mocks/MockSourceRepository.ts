@@ -192,6 +192,16 @@ export class MockSourceRepository implements SourceRepository {
     return Object.fromEntries(this.dbMeta);
   }
 
+  // ── Path queries ───────────────────────────────────────────
+
+  async getAllPaths(): Promise<string[]> {
+    const pathSet = new Set<string>();
+    for (const source of this.sources.values()) {
+      pathSet.add(source.path);
+    }
+    return Array.from(pathSet);
+  }
+
   // ── Cleanup ────────────────────────────────────────────────
 
   async dropAll(): Promise<void> {

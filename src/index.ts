@@ -53,6 +53,9 @@ import { LanceDbSourceRepository } from "./infrastructure/lancedb/LanceDbSourceR
 // ── Infrastructure: Watcher ─────────────────────────────────────────
 import { ChokidarWatcher } from "./infrastructure/watcher/ChokidarWatcher";
 
+// ── MCP Server ──────────────────────────────────────────────────────
+import { IndeXMcpServer } from "./presentation/mcp/IndeXMcpServer";
+
 // ── Domain Services ─────────────────────────────────────────────────
 import { IndexingService } from "./domain/services/IndexingService";
 import { SearchService } from "./domain/services/SearchService";
@@ -75,6 +78,7 @@ import { ChunkUseCase } from "./application/ChunkUseCase";
 import { EmbedUseCase } from "./application/EmbedUseCase";
 import { WatchUseCase } from "./application/WatchUseCase";
 import { DeleteUseCase } from "./application/DeleteUseCase";
+import { SyncUseCase } from "./application/SyncUseCase";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -86,8 +90,11 @@ export interface AppUseCases {
   embed: EmbedUseCase;
   watch: WatchUseCase;
   del: DeleteUseCase;
+  sync: SyncUseCase;
   /** Current application config (live value, settable). */
   config: Config;
+  /** MCP server for AI agent integration (lazy-started). */
+  mcp: IndeXMcpServer;
 }
 
 export interface CreateAppOptions {
@@ -300,5 +307,19 @@ export function createApp(options?: CreateAppOptions): AppUseCases {
 
   const del = new DeleteUseCase(repo);
 
-  return { index, search, pack, chunk, embed, watch, del, config };
+  // 12. Sync use case (prune stale + re-index changed via tree snapshot)
+  const excludePatterns = config.indexing?.exclude ?? [];
+  const sync = new SyncUseCase(repo, diffIndexingService, hasher, fileFilter, logger, excludePatterns);
+
+  // 13. MCP server (lazy-started — call app.mcp.start() to activate)
+  const mcp = new IndeXMcpServer({
+    search,
+    index,
+    pack,
+    chunk,
+    del,
+    config,
+  });
+
+  return { index, search, pack, chunk, embed, watch, del, sync, config, mcp };
 }
