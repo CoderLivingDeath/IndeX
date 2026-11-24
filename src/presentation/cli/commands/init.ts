@@ -156,7 +156,7 @@ const SKILL_MD_SOURCE = [
   "  \"search\": { \"default_mode\": \"hybrid\", \"top_k\": 10, \"hybrid_weight\": 0.7 },",
   "  \"indexing\": {",
   "    \"exclude\": [\"**/node_modules/**\", \"**/.git/**\", \"**/dist/**\", \"**/build/**\",",
-  "                \"**/.tmp/**\", \"**/.opencode/**\", \"**/.venv/**\", \"**/__pycache__/**\",",
+  "                \"**/.tmp/**\", \"**/.opencode/**\", \"**/.indeX/**\", \"**/.venv/**\", \"**/__pycache__/**\",",
   "                \"**/target/**\", \"**/vendor/**\"]",
   "  }",
   "}",

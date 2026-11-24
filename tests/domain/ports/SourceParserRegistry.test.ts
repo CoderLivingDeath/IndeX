@@ -20,13 +20,13 @@ describe("SourceParserRegistry interface", () => {
       }),
     };
 
+    const parsers: SourceParser[] = [];
     const registry: SourceParserRegistry = {
-      parsers: [] as SourceParser[],
       getParser(path: string) {
-        return this.parsers.find((p) => p.supportsFile(path)) ?? null;
+        return parsers.find((p) => p.supportsFile(path)) ?? null;
       },
       register(parser: SourceParser) {
-        this.parsers.push(parser);
+        parsers.push(parser);
       },
     };
 
@@ -39,7 +39,6 @@ describe("SourceParserRegistry interface", () => {
 
   test("getParser returns null for unsupported files", () => {
     const registry: SourceParserRegistry = {
-      parsers: [],
       getParser() {
         return null;
       },
@@ -65,13 +64,13 @@ describe("SourceParserRegistry interface", () => {
       }),
     };
 
+    const parsers: SourceParser[] = [mdParser];
     const registry: SourceParserRegistry = {
-      parsers: [mdParser],
       getParser(path: string) {
-        return this.parsers.find((p) => p.supportsFile(path)) ?? null;
+        return parsers.find((p) => p.supportsFile(path)) ?? null;
       },
       register(parser: SourceParser) {
-        this.parsers.push(parser);
+        parsers.push(parser);
       },
     };
 

@@ -18,9 +18,9 @@ describe("MarkdownAstParser", () => {
     const md = `# Hello World!\n## Special Characters: @#$%\n### Multiple   Spaces\n`;
     const headings = parser.parse(md);
 
-    expect(headings[0].anchor).toBe("hello-world");
-    expect(headings[1].anchor).toBe("special-characters");
-    expect(headings[2].anchor).toBe("multiple-spaces");
+    expect(headings[0]!.anchor).toBe("hello-world");
+    expect(headings[1]!.anchor).toBe("special-characters");
+    expect(headings[2]!.anchor).toBe("multiple-spaces");
   });
 
   test("returns empty array for text without headings", () => {
@@ -45,7 +45,7 @@ describe("MarkdownAstParser", () => {
     const md = `# Real Heading\n\`\`\`\n# Not a heading\n\`\`\`\n\n## Another Heading`;
     const headings = parser.parse(md);
     expect(headings).toHaveLength(2);
-    expect(headings[0].text).toBe("Real Heading");
-    expect(headings[1].text).toBe("Another Heading");
+    expect(headings[0]!.text).toBe("Real Heading");
+    expect(headings[1]!.text).toBe("Another Heading");
   });
 });

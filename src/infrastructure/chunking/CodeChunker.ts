@@ -3,17 +3,6 @@ import type { TokenEstimator } from "../../domain/systems/HashingSystem";
 import type { SourceType } from "../../domain/types";
 import { parse, Lang } from "@ast-grep/napi";
 
-interface NodeRange {
-  start: { line: number; column: number; index: number };
-  end: { line: number; column: number; index: number };
-}
-
-interface SgNodeLike {
-  kind(): string;
-  text(): string;
-  range(): NodeRange;
-}
-
 /**
  * Splits TypeScript code by function and class boundaries as indivisible units.
  * Each function or class is one chunk. Non-declaration code is grouped separately.
@@ -31,7 +20,7 @@ export class CodeChunker implements Chunker {
   async chunk(text: string): Promise<Chunk[]> {
     if (!text.trim()) return [];
 
-    let sgRoot: { root(): { children(): SgNodeLike[] } };
+    let sgRoot: ReturnType<typeof parse>;
     try {
       sgRoot = parse(Lang.TypeScript, text);
     } catch {

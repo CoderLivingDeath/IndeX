@@ -50,7 +50,19 @@ const ConfigSchema = z
     indexing: z
       .object({
         include: z.array(z.string()).optional(),
-        exclude: z.array(z.string()).default(["node_modules", ".git", ".tmp", "dist", "build", ".opencode"]),
+        exclude: z.array(z.string()).default([
+          "**/node_modules/**",
+          "**/.git/**",
+          "**/dist/**",
+          "**/build/**",
+          "**/.tmp/**",
+          "**/.opencode/**",
+          "**/.indeX/**",
+          "**/.venv/**",
+          "**/__pycache__/**",
+          "**/target/**",
+          "**/vendor/**",
+        ]),
       })
       .default({}),
   })
@@ -87,6 +99,7 @@ export const defaultConfig: Config = {
       "**/build/**",
       "**/.tmp/**",
       "**/.opencode/**",
+      "**/.indeX/**",
       "**/.venv/**",
       "**/__pycache__/**",
       "**/target/**",
@@ -181,7 +194,7 @@ export function load(path?: string): Config {
 export function loadOrDefault(configPath?: string): Config {
   const resolved = configPath ?? resolveConfigPath();
   if (!resolved || !existsSync(resolved)) {
-    return { ...defaultConfig };
+    return structuredClone(defaultConfig);
   }
   return load(resolved);
 }

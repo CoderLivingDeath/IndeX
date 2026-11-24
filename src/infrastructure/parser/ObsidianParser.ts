@@ -47,7 +47,7 @@ export class ObsidianParser implements SourceParser {
     let bodyContent = content;
 
     if (frontmatterMatch) {
-      frontmatter = (YAML.parse(frontmatterMatch[1]) || {}) as Frontmatter;
+      frontmatter = (YAML.parse(frontmatterMatch[1] ?? "") || {}) as Frontmatter;
       bodyContent = content.slice(frontmatterMatch[0].length);
     }
 
@@ -57,10 +57,9 @@ export class ObsidianParser implements SourceParser {
     const wikiLinks: WikiLink[] = [];
     let match: RegExpExecArray | null;
     while ((match = wikiLinkRegex.exec(content)) !== null) {
-      wikiLinks.push({
-        target: match[1]!,
-        alias: match[2] || undefined,
-      });
+      const link: WikiLink = { target: match[1]! };
+      if (match[2]) link.alias = match[2];
+      wikiLinks.push(link);
     }
 
     const tags: string[] = Array.isArray(frontmatter.tags)

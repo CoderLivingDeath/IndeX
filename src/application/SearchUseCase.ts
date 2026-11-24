@@ -1,9 +1,7 @@
 // ---------------------------------------------------------------------------
 // SearchUseCase — Phase 9
 //
-// Searches the indexed repository with three-mode support (semantic, keyword,
-// hybrid).  Delegates directly to `SourceRepository.search()` and optionally
-// packs results for LLM consumption via `ContextPacker`.
+// Embeds the query exactly once and delegates ranking to SearchService.
 // ---------------------------------------------------------------------------
 
 import type { SearchSystems } from "./di/Systems";
@@ -31,25 +29,32 @@ export class SearchUseCase {
       return [];
     }
 
+    const mode = options?.mode ?? "hybrid";
     const searchQuery: SearchQuery = {
       text: query,
-      mode: options?.mode ?? "hybrid",
+      mode,
       top_k: options?.top_k ?? 10,
-      tags: options?.tags,
-      source_types: options?.source_types,
     };
 
+    // exactOptionalPropertyTypes: only attach defined filters.
+    if (options?.tags !== undefined) searchQuery.tags = options.tags;
+    if (options?.source_types !== undefined) {
+      searchQuery.source_types = options.source_types;
+    }
+    if (options?.min_score !== undefined) searchQuery.min_score = options.min_score;
+
     this.systems.logger.info(
-      `Searching with mode="${searchQuery.mode}" query="${query}" top_k=${searchQuery.top_k}`,
+      `Searching with mode="${mode}" query="${query}" top_k=${searchQuery.top_k}`,
     );
 
-    // For semantic/hybrid modes embed the query text so the downstream repo
-    // can use the vector representation
-    if (searchQuery.mode === "semantic" || searchQuery.mode === "hybrid") {
-      await this.systems.embedder.embed(query);
+    // Embed exactly once for the modes that need vector search.
+    let vector: number[] | undefined;
+    if (mode === "semantic" || mode === "hybrid") {
+      const embedding = await this.systems.embedder.embed(query);
+      vector = embedding.vector;
     }
 
-    const results = await this.systems.repo.search(searchQuery);
+    const results = await this.systems.ranker.execute(searchQuery, vector);
 
     this.systems.logger.info(`Search returned ${results.length} results`);
 

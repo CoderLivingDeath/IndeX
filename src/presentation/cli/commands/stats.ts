@@ -16,7 +16,7 @@ export function registerStats(program: Command): void {
   Files:    ${stats.total_files}
   Chunks:   ${stats.total_chunks}
   Tokens:   ${stats.total_tokens}
-  Deduped:  ${stats.total_deduped_chunks}
+  Reused:   ${stats.total_deduped_chunks}
   Last indexed: ${stats.last_indexed}`);
     });
 }

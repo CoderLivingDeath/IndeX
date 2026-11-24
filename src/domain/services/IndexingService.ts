@@ -1,8 +1,8 @@
 import type { FileFilter } from "../ports/FileFilter";
 import type { SourceParserRegistry } from "../ports/SourceParserRegistry";
 import type { Logger } from "../ports/Logger";
-import type { Chunker } from "../systems/ChunkingSystem";
-import type { Embedder, Embedding, EmbedderRegistry } from "../systems/EmbeddingSystem";
+import type { Chunk, Chunker } from "../systems/ChunkingSystem";
+import type { Embedder, EmbedderRegistry } from "../systems/EmbeddingSystem";
 import type { SourceRepository } from "../ports/SourceRepository";
 import type { Hasher } from "../systems/HashingSystem";
 import type { SourceData, IndexStats, SourceMetadata } from "../types";
@@ -45,6 +45,7 @@ export class IndexingService {
     const included = files.filter((f) => this.fileFilter.shouldInclude(f));
     let totalTokens = 0;
     let totalDeduped = 0;
+    let totalChunks = 0;
     const totalFiles = included.length;
     let processedFiles = 0;
     let skippedCount = 0;
@@ -52,6 +53,10 @@ export class IndexingService {
 
     const CONCURRENCY = 4;
     let lastLoggedMilestone = 0;
+
+    // Embedding reuse cache shared by all batches in this run. Key includes
+    // the model so vectors from different embedders never collide.
+    const vectorCache = new Map<string, number[]>();
 
     this.logger?.info(`Scan complete: ${totalFiles} files to index`);
 
@@ -78,17 +83,10 @@ export class IndexingService {
         }),
       );
 
-      // ── Phase B (Sequential): dedup across DB + in-memory batch set ──
-      // seenHashes prevents race within the batch: even though upsert
-      // hasn't happened yet, we remember hashes we already committed to.
-      const seenHashes = new Set<string>();
-      // Flat list of all unique (non-deduped) chunks across the batch
-      const uniqueChunks: Array<{
-        pfIdx: number;
-        chunk: import("../../domain/systems/ChunkingSystem").Chunk;
-        embedContent: string;
-        semanticHash: string;
-      }> = [];
+      // ── Phase B (Sequential): prepare every chunk and resolve vectors ──
+      // Dedup happens at the embedding level: duplicate content reuses an
+      // existing vector, but every file still gets its own chunk rows.
+      const entries: ChunkEntry[] = [];
       const dedupedCounts: number[] = new Array(parsedBatch.length).fill(0);
 
       for (let pi = 0; pi < parsedBatch.length; pi++) {
@@ -98,41 +96,83 @@ export class IndexingService {
         for (const chunk of pf.chunks) {
           const embedContent = await truncateEmbedContent(pf.astSummary, chunk.core_content);
           const semanticHash = await this.hasher.hash(embedContent);
-
-          // Sequential: check DB (already persisted) + in-memory (current batch)
-          if (seenHashes.has(semanticHash) || await this.repo.hasSemanticBlake3(semanticHash)) {
-            dedupedCounts[pi]!++;
-            continue;
-          }
-
-          seenHashes.add(semanticHash);
-          uniqueChunks.push({ pfIdx: pi, chunk, embedContent, semanticHash });
+          const embedder = pf.embedder;
+          entries.push({
+            pfIdx: pi,
+            chunk,
+            embedContent,
+            semanticHash,
+            embedder,
+            key: `${embedder?.model ?? "none"}:${semanticHash}`,
+            vector: null,
+          });
         }
       }
 
-      // ── Phase C: group unique chunks by embedder, embedBatch per group ──
-      const embedderGroups = new Map<Embedder, typeof uniqueChunks>();
-      for (const uc of uniqueChunks) {
-        const pf = parsedBatch[uc.pfIdx]!;
-        if (!pf.embedder) continue;
-        let group = embedderGroups.get(pf.embedder);
-        if (!group) { group = []; embedderGroups.set(pf.embedder, group); }
-        group.push(uc);
+      // Group identical content so it is embedded at most once per run.
+      const byKey = new Map<string, ChunkEntry[]>();
+      for (const entry of entries) {
+        const group = byKey.get(entry.key);
+        if (group) group.push(entry);
+        else byKey.set(entry.key, [entry]);
+      }
+
+      // Resolve vectors from the run cache or the persisted index.
+      const pending: Array<{ key: string; entries: ChunkEntry[] }> = [];
+      for (const [key, group] of byKey) {
+        const cached = vectorCache.get(key);
+        if (cached) {
+          for (const entry of group) {
+            entry.vector = cached;
+            dedupedCounts[entry.pfIdx]!++;
+          }
+          continue;
+        }
+
+        const first = group[0]!;
+        if (!first.embedder) continue;
+
+        const existing = await this.repo.getEmbeddingBySemanticHash(first.semanticHash);
+        if (existing && existing.length === first.embedder.dimensions) {
+          vectorCache.set(key, existing);
+          for (const entry of group) {
+            entry.vector = existing;
+            dedupedCounts[entry.pfIdx]!++;
+          }
+          continue;
+        }
+
+        pending.push({ key, entries: group });
+      }
+
+      // ── Phase C: group pending content by embedder, embedBatch per group ──
+      const pendingByEmbedder = new Map<Embedder, typeof pending>();
+      for (const item of pending) {
+        const embedder = item.entries[0]!.embedder!;
+        let group = pendingByEmbedder.get(embedder);
+        if (!group) { group = []; pendingByEmbedder.set(embedder, group); }
+        group.push(item);
       }
 
       const embedResults = await Promise.all(
-        [...embedderGroups.entries()].map(async ([embedder, items]) => {
-          const texts = items.map((i) => i.embedContent);
-          const embeddings = await embedder.embedBatch(texts);
+        [...pendingByEmbedder.entries()].map(async ([embedder, items]) => {
+          const embeddings = await embedder.embedBatch(items.map((i) => i.entries[0]!.embedContent));
           return { items, embeddings };
         }),
       );
 
-      // Map each unique chunk → its embedding (or undefined if no embedder)
-      const chunkEmbedding = new Map<(typeof uniqueChunks)[number], Embedding>();
       for (const { items, embeddings } of embedResults) {
         for (let i = 0; i < items.length; i++) {
-          chunkEmbedding.set(items[i]!, embeddings[i]!);
+          const item = items[i]!;
+          const embedding = embeddings[i]!;
+          const vector = [...embedding.vector];
+          vectorCache.set(item.key, vector);
+
+          item.entries.forEach((entry, index) => {
+            entry.vector = vector;
+            // Every duplicate beyond the first was served by reuse.
+            if (index > 0) dedupedCounts[entry.pfIdx]!++;
+          });
         }
       }
 
@@ -145,42 +185,45 @@ export class IndexingService {
         const relPath = pf.filePath.replace(/\\/g, "/").split("/").slice(-3).join("/");
         const dc = dedupedCounts[pi]!;
         const dcTotal = pf.chunks.length;
-        const dedupSuffix = dc === 0 ? "" : dc === dcTotal ? ` (ALL deduped)` : ` (${dc}/${dcTotal} deduped)`;
+        const dedupSuffix = dc === 0 ? "" : dc === dcTotal ? ` (ALL reused)` : ` (${dc}/${dcTotal} reused)`;
         this.logger?.info(`[${processedFiles}/${totalFiles}] ${relPath}${dedupSuffix}`);
 
         const batch: SourceData[] = [];
         let fileTokens = 0;
+        const now = new Date().toISOString();
 
-        for (const uc of uniqueChunks) {
-          if (uc.pfIdx !== pi) continue;
-          const embedding = chunkEmbedding.get(uc);
-          fileTokens += uc.chunk.size_tokens;
-          const now = new Date().toISOString();
+        for (const entry of entries) {
+          if (entry.pfIdx !== pi) continue;
+          fileTokens += entry.chunk.size_tokens;
           batch.push({
             id: crypto.randomUUID(),
             chunk_id: crypto.randomUUID(),
             source_id: pf.sourceId,
             type: pf.parsed.type,
             title: pf.filePath,
-            content: uc.chunk.content,
+            content: entry.chunk.content,
             tags: pf.parsed.tags,
             path: pf.filePath,
             file_blake3: pf.parsed.file_blake3,
-            semantic_blake3: uc.semanticHash,
-            chunk_index: uc.chunk.chunk_index,
-            total_chunks: uc.chunk.total_chunks,
-            embeddings: embedding ? [...embedding.vector] : [],
+            semantic_blake3: entry.semanticHash,
+            chunk_index: entry.chunk.chunk_index,
+            total_chunks: entry.chunk.total_chunks,
+            embeddings: entry.vector ?? [],
             metadata: pf.metaWithAst,
             created_at: now,
             updated_at: now,
           });
         }
 
-        totalDeduped += dedupedCounts[pi]!;
+        totalDeduped += dc;
 
+        // Full indexing is idempotent: replace this file's previous rows
+        // before inserting the new ones (the diff service does the same).
+        await this.repo.deleteByPath(pf.filePath);
         if (batch.length > 0) {
           await this.repo.upsertBatch(batch);
           totalTokens += fileTokens;
+          totalChunks += batch.length;
         }
         if (pf.parsed.fileIndex) {
           await this.repo.upsertFileIndex(pf.parsed.fileIndex);
@@ -204,10 +247,30 @@ export class IndexingService {
       `Progress: ${processedFiles}/${totalFiles - skippedCount} files (${elapsed}s) | tokens: ${totalTokens}`,
     );
 
-    const repoStats = await this.repo.stats();
-    return { ...repoStats, total_tokens: totalTokens, total_deduped_chunks: totalDeduped };
+    // Report stats for THIS run, not the whole repository. Callers that need
+    // global totals use repo.stats() / DeleteUseCase.stats().
+    return {
+      total_sources: processedFiles,
+      total_chunks: totalChunks,
+      total_files: processedFiles,
+      total_tokens: totalTokens,
+      total_deduped_chunks: totalDeduped,
+      last_indexed: new Date().toISOString(),
+    };
   }
 
+}
+
+/** A chunk awaiting (or holding) its embedding for the current batch. */
+interface ChunkEntry {
+  pfIdx: number;
+  chunk: Chunk;
+  embedContent: string;
+  semanticHash: string;
+  embedder: Embedder | null;
+  /** Cache key: `${model}:${semanticHash}`. */
+  key: string;
+  vector: number[] | null;
 }
 
 /**

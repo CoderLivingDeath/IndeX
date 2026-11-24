@@ -7,6 +7,7 @@ import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { ConfigLoader } from "../../../src/config/ConfigLoader";
+import { matchesAny } from "../../../src/shared/globMatcher";
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -103,6 +104,34 @@ describe("ConfigLoader", () => {
     expect(() =>
       ConfigLoader.load(join(tmpDir, ".indeX", "config.json")),
     ).toThrow();
+  });
+
+  // ── test 4b: default exclusions use glob patterns ─────────────
+  test("default exclude patterns match nested paths", () => {
+    writeConfig(
+      tmpDir,
+      JSON.stringify({
+        models: [{ name: "m", dimensions: 8, provider: "ollama" }],
+        universal_model: "m",
+      }),
+    );
+
+    const config = ConfigLoader.load(join(tmpDir, ".indeX", "config.json"));
+    expect(matchesAny(config.indexing.exclude, "node_modules/pkg/index.js")).toBe(true);
+    expect(matchesAny(config.indexing.exclude, ".git/config")).toBe(true);
+    expect(matchesAny(config.indexing.exclude, "src/index.ts")).toBe(false);
+  });
+
+  // ── test 4c: defaults are isolated per call ───────────────────
+  test("loadOrDefault returns an isolated copy of defaults", () => {
+    const path = join(tmpDir, "missing", "config.json");
+    const first = ConfigLoader.loadOrDefault(path);
+    first.indexing.exclude.push("**/custom/**");
+    first.models[0]!.name = "mutated";
+
+    const second = ConfigLoader.loadOrDefault(path);
+    expect(second.indexing.exclude).not.toContain("**/custom/**");
+    expect(second.models[0]!.name).toBe("qllama/multilingual-e5-small");
   });
 
   // ── test 5: universal_model validated to be in models[] ───────

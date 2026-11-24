@@ -18,7 +18,7 @@ Content for section three.`;
     const result = await chunker.chunk(text);
 
     expect(result.length).toBe(3);
-    expect(result[0].strategy).toBe("heading");
+    expect(result[0]!.strategy).toBe("heading");
   });
 
   it("returns one chunk per section that fits within max_tokens", async () => {
@@ -51,8 +51,8 @@ ${"B".repeat(500)}`;
     const result = await chunker.chunk(text);
 
     expect(result).toHaveLength(2);
-    expect(result[0].strategy).toBe("heading");
-    expect(result[1].strategy).toBe("heading");
+    expect(result[0]!.strategy).toBe("heading");
+    expect(result[1]!.strategy).toBe("heading");
   });
 
   it("core_content is section body without the heading", async () => {
@@ -64,8 +64,8 @@ Body content here.`;
     const result = await chunker.chunk(text);
 
     expect(result).toHaveLength(1);
-    expect(result[0].core_content).toBe("Body content here.");
-    expect(result[0].content).toContain("Body content here.");
+    expect(result[0]!.core_content).toBe("Body content here.");
+    expect(result[0]!.content).toContain("Body content here.");
   });
 
   it("handles text without headings as a single section", async () => {
@@ -76,7 +76,7 @@ Body content here.`;
     const result = await chunker.chunk(text);
 
     expect(result).toHaveLength(1);
-    expect(result[0].content).toBe(text);
+    expect(result[0]!.content).toBe(text);
   });
 
   it("handles empty text", async () => {
@@ -97,10 +97,10 @@ Content B.`;
 
     const result = await chunker.chunk(text);
 
-    expect(result[0].chunk_index).toBe(0);
-    expect(result[1].chunk_index).toBe(1);
-    expect(result[0].total_chunks).toBe(2);
-    expect(result[1].total_chunks).toBe(2);
+    expect(result[0]!.chunk_index).toBe(0);
+    expect(result[1]!.chunk_index).toBe(1);
+    expect(result[0]!.total_chunks).toBe(2);
+    expect(result[1]!.total_chunks).toBe(2);
   });
 
   it("has type 'markdown'", async () => {

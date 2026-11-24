@@ -2,8 +2,10 @@
 // HTTP API — RED tests
 // ---------------------------------------------------------------------------
 
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
+import { resolve } from "path";
 import { createServer } from "../../../src/presentation/api/server";
+import { buildWeb } from "../../../src/presentation/api/web-build";
 import { MockSourceRepository } from "../../mocks/MockSourceRepository";
 import type { SearchResult, IndexStats } from "../../../src/domain/types";
 
@@ -33,6 +35,21 @@ function createMockApp() {
 }
 
 describe("HTTP API", () => {
+  beforeAll(async () => {
+    // The SPA is served from dist/web; build it once for the static test.
+    await buildWeb();
+  });
+
+  test("GET /api/system returns runtime info", async () => {
+    const app = createServer(createMockApp() as any, true);
+    const res = await app.request("/api/system");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveProperty("cwd");
+    expect(body).toHaveProperty("storage");
+    expect(body).toHaveProperty("server");
+  });
+
   test("GET /api/search returns JSON results", async () => {
     const app = createServer(createMockApp() as any, true);
     const res = await app.request("/api/search?q=test&mode=hybrid");
@@ -68,6 +85,39 @@ describe("HTTP API", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.status).toBe("ok");
+  });
+
+  test("POST /api/index resolves relative paths to absolute", async () => {
+    const app = createMockApp();
+    let capturedPath = "";
+    app.index.execute = async (path: string): Promise<IndexStats> => {
+      capturedPath = path;
+      return {
+        total_sources: 0,
+        total_chunks: 0,
+        total_files: 0,
+        total_tokens: 0,
+        total_deduped_chunks: 0,
+        last_indexed: new Date().toISOString(),
+      };
+    };
+
+    const server = createServer(app as any, true);
+    const res = await server.request("/api/index", {
+      method: "POST",
+      body: JSON.stringify({ path: "src/domain" }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(capturedPath).toBe(resolve("src/domain"));
+  });
+
+  test("GET / serves the SPA", async () => {
+    const app = createServer(createMockApp() as any, true);
+    const res = await app.request("/");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("<title>IndeX</title>");
   });
 
   test("POST /api/index without path returns 400", async () => {

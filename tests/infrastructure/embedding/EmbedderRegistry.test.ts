@@ -167,9 +167,9 @@ describe("EmbedderRegistryImpl", () => {
 
     // Assert — ordered by priority ascending: 1, 5, 10
     expect(result).toHaveLength(3);
-    expect(result[0].model).toBe("first");
-    expect(result[1].model).toBe("second");
-    expect(result[2].model).toBe("third");
+    expect(result[0]!.model).toBe("first");
+    expect(result[1]!.model).toBe("second");
+    expect(result[2]!.model).toBe("third");
   });
 
   it("getEmbedders returns single-element array when one embedder matches", () => {
@@ -184,7 +184,7 @@ describe("EmbedderRegistryImpl", () => {
 
     // Assert
     expect(result).toHaveLength(1);
-    expect(result[0].model).toBe("lonely");
+    expect(result[0]!.model).toBe("lonely");
   });
 
   it("getEmbedders returns empty array when no match and no universal model", () => {
@@ -213,7 +213,7 @@ describe("EmbedderRegistryImpl", () => {
 
     // Assert
     expect(result).toHaveLength(1);
-    expect(result[0].model).toBe("universal");
+    expect(result[0]!.model).toBe("universal");
   });
 
   it("getEmbedders returns specific matches alongside universal when both exist", () => {
@@ -230,8 +230,8 @@ describe("EmbedderRegistryImpl", () => {
 
     // Assert — specific match first (lower priority), universal second
     expect(result).toHaveLength(2);
-    expect(result[0].model).toBe("universal");
-    expect(result[1].model).toBe("specific");
+    expect(result[0]!.model).toBe("universal");
+    expect(result[1]!.model).toBe("specific");
   });
 
   // -----------------------------------------------------------------------
@@ -302,8 +302,8 @@ describe("EmbedderRegistryImpl", () => {
 
     // Assert — both universals returned in priority order
     expect(result).toHaveLength(2);
-    expect(result[0].model).toBe("uni-primary");
-    expect(result[1].model).toBe("uni-secondary");
+    expect(result[0]!.model).toBe("uni-primary");
+    expect(result[1]!.model).toBe("uni-secondary");
   });
 
   // -----------------------------------------------------------------------
@@ -394,8 +394,8 @@ describe("EmbedderRegistryImpl", () => {
 
     // Assert — both returned, ordered by priority
     expect(result).toHaveLength(2);
-    expect(result[0].model).toBe("second");  // priority 1
-    expect(result[1].model).toBe("first");   // priority 5
+    expect(result[0]!.model).toBe("second");  // priority 1
+    expect(result[1]!.model).toBe("first");   // priority 5
   });
 
   it("register adds universal embedder when source_type is '*' or empty", () => {

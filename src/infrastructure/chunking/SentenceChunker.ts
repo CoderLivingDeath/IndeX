@@ -54,8 +54,8 @@ export class SentenceChunker implements Chunker {
     let chunkIndex = 0;
 
     for (let i = 0; i < sentences.length; i++) {
-      const sentence = sentences[i];
-      const tokenCount = sentenceTokenCounts[i];
+      const sentence = sentences[i]!;
+      const tokenCount = sentenceTokenCounts[i]!;
 
       // Single sentence exceeds maxTokens → delegate to overflow
       if (tokenCount > this.maxTokens && currentGroup.length === 0) {

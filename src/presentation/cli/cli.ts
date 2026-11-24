@@ -13,6 +13,7 @@ import { registerWatch } from "./commands/watch";
 import { registerScan } from "./commands/scan";
 import { registerInit } from "./commands/init";
 import { registerSync } from "./commands/sync";
+import { registerMcp } from "./commands/mcp";
 
 // Re-export for backward compatibility (tests)
 export { parseArgs, formatSearchResults, SEARCH_COLUMNS } from "./format";
@@ -41,6 +42,7 @@ export function createProgram(): Command {
   registerScan(program);
   registerInit(program);
   registerSync(program);
+  registerMcp(program);
 
   return program;
 }

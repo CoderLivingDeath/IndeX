@@ -143,18 +143,9 @@ export class SyncUseCase {
       }
     }
 
-    // 7. Store snapshot hash + entries BEFORE indexing.
-    //    If indexing times out, the next run will see the stored hash and skip
-    //    (deletions are already done). Missed re-indexes will be caught on
-    //    subsequent file changes or a manual re-index.
-    const storedEntries: StoredEntry[] = snapshot.entries.map((e) => ({
-      r: e.relativePath,
-      m: e.mtimeMs,
-    }));
-    await this.repo.setDbMeta(SNAPSHOT_ENTRIES_KEY, JSON.stringify(storedEntries));
-    await this.repo.setDbMeta(SNAPSHOT_HASH_KEY, snapshot.hash);
-
-    // 8. Execute (re-)indexing
+    // 7. Execute (re-)indexing before persisting the snapshot. The snapshot
+    //    is a checkpoint: writing it before the work would mark a failed pass
+    //    as successful and permanently skip the missed files.
     let indexed = 0;
     let skipped = 0;
     let idxErrors = 0;
@@ -170,12 +161,29 @@ export class SyncUseCase {
       }
     }
 
-    // Count files that were neither deleted nor re-indexed
+    // 8. Persist the snapshot only on a fully successful pass.
+    const totalErrors = delErrors + idxErrors;
+    if (totalErrors === 0) {
+      const storedEntries: StoredEntry[] = snapshot.entries.map((e) => ({
+        r: e.relativePath,
+        m: e.mtimeMs,
+      }));
+      await this.repo.setDbMeta(SNAPSHOT_ENTRIES_KEY, JSON.stringify(storedEntries));
+      await this.repo.setDbMeta(SNAPSHOT_HASH_KEY, snapshot.hash);
+    } else {
+      this.logger?.warn(
+        `Sync finished with ${totalErrors} error(s) — keeping the previous snapshot so the next sync retries`,
+      );
+    }
+
+    // Files neither deleted nor re-indexed: unchanged tree entries plus
+    // files whose content hash already matched.
     const unchanged = snapshot.entries.length - toIndex.length;
+    const totalSkipped = skipped + unchanged;
 
     this.logger?.info(
       `Sync complete: ${deleted} deleted, ${indexed} indexed, ` +
-      `${unchanged} unchanged, ${delErrors + idxErrors} errors`,
+      `${totalSkipped} skipped, ${totalErrors} errors`,
     );
 
     return {
@@ -183,8 +191,8 @@ export class SyncUseCase {
       currentHash: snapshot.hash,
       deleted,
       indexed,
-      skipped: unchanged,
-      errors: delErrors + idxErrors,
+      skipped: totalSkipped,
+      errors: totalErrors,
     };
   }
 }

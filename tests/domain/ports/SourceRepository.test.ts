@@ -16,6 +16,7 @@ describe("SourceRepository interface", () => {
       search: async () => [],
       hasSemanticBlake3: async () => false,
       hasModelEmbedding: async () => false,
+      getEmbeddingBySemanticHash: async () => null,
       getSourceIdsByHash: async () => [],
       getFileBlake3ByPath: async () => null,
       stats: async () => ({
@@ -23,6 +24,7 @@ describe("SourceRepository interface", () => {
         total_chunks: 0,
         total_files: 0,
         total_tokens: 0,
+        total_deduped_chunks: 0,
         last_indexed: "2026-01-01T00:00:00.000Z",
       }),
       upsertFileIndex: async () => {},
@@ -31,6 +33,7 @@ describe("SourceRepository interface", () => {
       getDbMeta: async () => null,
       setDbMeta: async () => {},
       getAllDbMeta: async () => ({}),
+      getAllPaths: async () => [],
       dropAll: async () => {},
     };
 
@@ -69,6 +72,7 @@ describe("SourceRepository interface", () => {
       search: async () => [],
       hasSemanticBlake3: async () => true,
       hasModelEmbedding: async () => false,
+      getEmbeddingBySemanticHash: async () => null,
       getSourceIdsByHash: async () => ["id-1"],
       getFileBlake3ByPath: async () => "hash",
       stats: async () => ({
@@ -85,6 +89,7 @@ describe("SourceRepository interface", () => {
       getDbMeta: async () => null,
       setDbMeta: async () => {},
       getAllDbMeta: async () => ({}),
+      getAllPaths: async () => [],
       dropAll: async () => {},
     };
 
@@ -131,6 +136,7 @@ describe("SourceRepository interface", () => {
       search: async () => [],
       hasSemanticBlake3: async () => false,
       hasModelEmbedding: async () => false,
+      getEmbeddingBySemanticHash: async () => null,
       getSourceIdsByHash: async () => [],
       getFileBlake3ByPath: async () => null,
       stats: async () => ({
@@ -147,9 +153,10 @@ describe("SourceRepository interface", () => {
       getDbMeta: async () => null,
       setDbMeta: async () => {},
       getAllDbMeta: async () => ({}),
+      getAllPaths: async () => [],
       dropAll: async () => {},
     };
-    // All 20 methods
-    expect(Object.keys(mock).length).toBe(20);
+    // All 22 methods (including getEmbeddingBySemanticHash and getAllPaths)
+    expect(Object.keys(mock).length).toBe(22);
   });
 });

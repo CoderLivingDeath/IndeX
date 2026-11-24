@@ -2,7 +2,7 @@
 // CLI format utilities — shared by command handlers and tests
 // ---------------------------------------------------------------------------
 
-import type { SearchResult } from "../../../domain/types";
+import type { SearchResult } from "../../domain/types";
 
 /** Default columns for search output. */
 export const SEARCH_COLUMNS = [
@@ -27,8 +27,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (argv.length === 0) return { command: "help", args: [], flags: {} };
 
   const validCommands = [
-    "index", "search", "pack", "chunk", "embed",
-    "watch", "watch-daemon", "stats", "clear", "init", "sync",
+    "search", "pack", "chunk", "embed",
+    "watch", "watch-daemon", "stats", "clear", "init", "sync", "mcp",
     "--help", "-h",
   ];
   const first = argv[0] ?? "";

@@ -11,12 +11,23 @@ import type {
   SymbolDetail,
   Import,
   Export,
+  Relationship,
 } from "../../domain/ast";
 import { BLAKE3Hasher } from "../hashing/BLAKE3Hasher";
 import { parse, Lang } from "@ast-grep/napi";
 import { initDynamicLanguages, getLanguageForFile } from "./astGrepDynamic";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Structural view of an ast-grep node. `kind()` is typed as a language-specific
+ * union in @ast-grep/napi, so it is compared via String().
+ */
+interface AstNodeLike {
+  kind(): unknown;
+  text(): string;
+  children(): AstNodeLike[];
+}
 
 /**
  * Strip surrounding quotes from a string.
@@ -29,11 +40,9 @@ function stripQuotes(s: string): string {
  * Extract the function name from a function_declaration node.
  * The name is typically the first `identifier` child.
  */
-function extractFunctionName(node: {
-  children(): { kind(): string; text(): string }[];
-}): string | null {
+function extractFunctionName(node: AstNodeLike): string | null {
   for (const c of node.children()) {
-    if (c.kind() === "identifier") return c.text();
+    if (String(c.kind()) === "identifier") return c.text();
   }
   return null;
 }
@@ -42,11 +51,9 @@ function extractFunctionName(node: {
  * Extract the class/interface name from a declaration node.
  * For class_declaration/interface_declaration: first `type_identifier` child.
  */
-function extractClassName(node: {
-  children(): { kind(): string; text(): string }[];
-}): string | null {
+function extractClassName(node: AstNodeLike): string | null {
   for (const c of node.children()) {
-    if (c.kind() === "type_identifier") return c.text();
+    if (String(c.kind()) === "type_identifier") return c.text();
   }
   return null;
 }
@@ -626,20 +633,16 @@ export class AstGrepParser implements SourceParser {
 
   // ── Shared helpers ───────────────────────────────────────────────────
 
-  private getImportSource(node: {
-    children(): { kind(): string; text(): string }[];
-  }): string {
+  private getImportSource(node: AstNodeLike): string {
     for (const c of node.children()) {
-      if (c.kind() === "string") return stripQuotes(c.text());
+      if (String(c.kind()) === "string") return stripQuotes(c.text());
     }
     return "";
   }
 
-  private getPythonIdentifier(node: {
-    children(): { kind(): string; text(): string }[];
-  }): string | null {
+  private getPythonIdentifier(node: AstNodeLike): string | null {
     for (const c of node.children()) {
-      if (c.kind() === "identifier") return c.text();
+      if (String(c.kind()) === "identifier") return c.text();
     }
     return null;
   }
@@ -660,7 +663,7 @@ export class AstGrepParser implements SourceParser {
     imports: Import[],
     exports: Export[],
     symbols: SymbolDetail[],
-    relationships: string[],
+    relationships: Relationship[],
   ): FileIndex {
     return {
       path,

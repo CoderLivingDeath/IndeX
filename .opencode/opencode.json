@@ -3,7 +3,7 @@
   "mcp": {
     "indeX": {
       "type": "local",
-      "command": ["indeX-mcp"],
+      "command": ["indeX", "mcp"],
       "enabled": true
     }
   }

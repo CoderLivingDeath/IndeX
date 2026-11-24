@@ -55,7 +55,7 @@ function makeParser(
           : { kind: "generic", encoding: "utf-8" },
       file_blake3: `mock-${type}-hash`,
       last_parsed: new Date().toISOString(),
-      fileIndex,
+      ...(fileIndex ? { fileIndex } : {}),
     }),
   };
 }
@@ -352,6 +352,63 @@ describe("DiffIndexingService", () => {
       const sources = await repo.getByPath(filePath);
       expect(sources.length).toBe(1);
       expect(sources[0]!.content).toBe("new chunk content");
+
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
+  });
+
+  // ── Embedding reuse ────────────────────────────────────────
+
+  describe("embedding reuse", () => {
+    test("reuses an existing vector for identical content", async () => {
+      const tmpDir = createTempDir();
+      const filePath = createTestFile(tmpDir, "a.ts", "changed content");
+
+      const hasher = new MockHasher();
+      const sharedHash = await hasher.hash("shared core unit");
+
+      const repo = new MockSourceRepository();
+      const other = seedSourceData("b", "/virtual/b.ts", "file-b-hash", sharedHash);
+      other.embeddings = [1, 2, 3, 4, 5, 6, 7, 8];
+      await repo.upsert(other);
+
+      let embedCalls = 0;
+      const embedder = new MockEmbedder("m", 8);
+      embedder.embed = async (text: string) => {
+        embedCalls++;
+        return {
+          vector: [9, 9, 9, 9, 9, 9, 9, 9],
+          model: "m",
+          dimensions: 8,
+          tokens_in: text.length,
+        };
+      };
+
+      const service = new DiffIndexingService(
+        hasher,
+        makeParserRegistry(makeParser("code", ".ts")),
+        new MockChunker([
+          {
+            content: "new chunk content",
+            core_content: "shared core unit",
+            chunk_index: 0,
+            total_chunks: 1,
+            strategy: "fixed",
+            size_tokens: 5,
+          },
+        ]),
+        new MockEmbedderRegistry({ code: embedder }),
+        repo,
+        makeFilter((p) => p.endsWith(".ts")),
+      );
+
+      const result = await service.diffIndex(tmpDir);
+      expect(result.indexed).toBe(1);
+
+      const sources = await repo.getByPath(filePath);
+      expect(sources.length).toBe(1);
+      expect(sources[0]!.embeddings).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      expect(embedCalls).toBe(0);
 
       rmSync(tmpDir, { recursive: true, force: true });
     });

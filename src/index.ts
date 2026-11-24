@@ -155,11 +155,12 @@ export function createApp(options?: CreateAppOptions): AppUseCases {
   // 1. Load config
   const config = loadConfig(options?.configPath);
 
-  // 2. Logger
+  // 2. Logger — an explicitly injected logger always wins.
   const logger: Logger =
-    options?.logger ?? options?.testMode
+    options?.logger ??
+    (options?.testMode
       ? new SilentLogger()
-      : new PinoLogger({ level: "info", pretty: options?.pretty ?? false });
+      : new PinoLogger({ level: "info", pretty: options?.pretty ?? false }));
 
   // 3. Hasher
   const hasher = new BLAKE3Hasher();
@@ -231,15 +232,16 @@ export function createApp(options?: CreateAppOptions): AppUseCases {
     logger,
   );
 
-  const searchEmbedder =
+  const baseSearchEmbedder =
     options?.searchEmbedder ??
     new OllamaEmbedder(
       config.models[0]!.name,
       config.models[0]!.dimensions,
       config.models[0]!.baseUrl ?? "http://localhost:11434",
     );
+  const searchEmbedder = new CachedEmbedder(baseSearchEmbedder, cache, hasher);
 
-  const searchService = new SearchService(searchEmbedder, repo, {
+  const searchRanker = new SearchService(repo, {
     hybrid_weight: config.search.hybrid_weight,
   });
 
@@ -265,16 +267,7 @@ export function createApp(options?: CreateAppOptions): AppUseCases {
 
   const search = new SearchUseCase({
     embedder: searchEmbedder,
-    repo,
-    packer: {
-      pack: async (results: SearchResult[]) => ({
-        markdown: results.map((r) => r.source.content).join("\n\n"),
-        chunks_used: results.length,
-        total_tokens: 0,
-        truncated: false,
-        source_notes: results.map((r) => r.source.path),
-      }),
-    } as any,
+    ranker: searchRanker,
     logger,
   } satisfies SearchSystems);
 
@@ -301,9 +294,9 @@ export function createApp(options?: CreateAppOptions): AppUseCases {
   } satisfies EmbedSystems);
 
   const watcher = new ChokidarWatcher(options?.watchDir ?? ".", {
-    ignored: options?.watchIgnored,
+    ...(options?.watchIgnored ? { ignored: options.watchIgnored } : {}),
   });
-  const watch = new WatchUseCase(watcher, diffIndexingService, logger);
+  const watch = new WatchUseCase(watcher, diffIndexingService, logger, repo);
 
   const del = new DeleteUseCase(repo);
 

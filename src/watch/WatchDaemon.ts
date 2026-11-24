@@ -9,6 +9,7 @@
 // ---------------------------------------------------------------------------
 
 import { loadWatchConfig, saveWatchConfig, getWatchConfigPath, isProcessAlive, DEFAULT_IGNORED_PATTERNS } from "./WatchConfig";
+import type { WatchConfig } from "./WatchConfig";
 import { startHealthServer } from "./WatchHealthServer";
 import type { HealthServer } from "./WatchHealthServer";
 
@@ -21,12 +22,12 @@ import type { HealthServer } from "./WatchHealthServer";
  */
 export async function runDaemon(directory: string): Promise<void> {
   const configPath = getWatchConfigPath();
-  let config = loadWatchConfig(configPath);
+  const existing = loadWatchConfig(configPath);
 
   // ── Guard: refuse if another daemon is already registered ────
-  if (config?.pid && config.pid !== process.pid) {
-    if (isProcessAlive(config.pid)) {
-      console.error(`Error: another daemon is already running (PID: ${config.pid}).`);
+  if (existing?.pid && existing.pid !== process.pid) {
+    if (isProcessAlive(existing.pid)) {
+      console.error(`Error: another daemon is already running (PID: ${existing.pid}).`);
       console.error("Stop it first with 'watch stop'.");
       process.exit(1);
     }
@@ -35,15 +36,18 @@ export async function runDaemon(directory: string): Promise<void> {
   // ── Init config with "starting" status ──────────────────────
   // Write PID + status BEFORE the heavy import so the CLI can immediately
   // see that the daemon is alive (via `watch status`).
-  if (!config) {
-    config = {
-      directory,
-      pid: null,
-      status: "starting",
-      started_at: null,
-      options: { debounce_ms: 500, ignored: [...DEFAULT_IGNORED_PATTERNS] },
-    };
-  }
+  let config: WatchConfig = existing ?? {
+    directory,
+    pid: null,
+    status: "starting",
+    started_at: null,
+    health_port: null,
+    options: {
+      debounce_ms: 500,
+      ignored: [...DEFAULT_IGNORED_PATTERNS],
+      requested_health_port: null,
+    },
+  };
   config.pid = process.pid;
   config.status = "starting";
   config.directory = directory;
@@ -126,6 +130,8 @@ export async function runDaemon(directory: string): Promise<void> {
     config = loadWatchConfig(configPath) ?? config;
     config.status = "error";
     config.pid = null;
+    config.started_at = null;
+    config.health_port = null;
     saveWatchConfig(config, configPath);
     process.exit(1);
   }

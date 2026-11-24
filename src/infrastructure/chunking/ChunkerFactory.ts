@@ -168,14 +168,15 @@ async function mergeSmallChunks(
 
   // Backward-merge approach: push chunks one by one;
   // if the last result entry is below MIN_MERGE_TOKENS, merge current into it.
-  const result: Chunk[] = [chunks[0]];
+  const result: Chunk[] = [chunks[0]!];
 
   for (let i = 1; i < chunks.length; i++) {
-    const last = result[result.length - 1];
+    const last = result[result.length - 1]!;
+    const current = chunks[i]!;
     if (last.size_tokens < MIN_MERGE_TOKENS) {
       // Merge into last result entry (backward merge)
-      const mergedContent = last.content + "\n" + chunks[i].content;
-      const mergedCore = last.core_content + "\n" + chunks[i].core_content;
+      const mergedContent = last.content + "\n" + current.content;
+      const mergedCore = last.core_content + "\n" + current.core_content;
       const mergedTokens = await estimator.estimate(mergedContent);
       result[result.length - 1] = {
         content: mergedContent,
@@ -186,15 +187,15 @@ async function mergeSmallChunks(
         size_tokens: mergedTokens,
       };
     } else {
-      result.push(chunks[i]);
+      result.push(current);
     }
   }
 
   // Post-loop cleanup: if last result entry is still < MIN_MERGE_TOKENS
   // and there's a previous entry, merge backward into it (handles trailing small chunks)
-  if (result.length > 1 && result[result.length - 1].size_tokens < MIN_MERGE_TOKENS) {
+  if (result.length > 1 && result[result.length - 1]!.size_tokens < MIN_MERGE_TOKENS) {
     const last = result.pop()!;
-    const prev = result[result.length - 1];
+    const prev = result[result.length - 1]!;
     const mergedContent = prev.content + "\n" + last.content;
     const mergedCore = prev.core_content + "\n" + last.core_content;
     const mergedTokens = await estimator.estimate(mergedContent);
@@ -210,8 +211,9 @@ async function mergeSmallChunks(
 
   // Re-index
   for (let i = 0; i < result.length; i++) {
-    result[i].chunk_index = i;
-    result[i].total_chunks = result.length;
+    const chunk = result[i]!;
+    chunk.chunk_index = i;
+    chunk.total_chunks = result.length;
   }
 
   return result;
@@ -233,10 +235,10 @@ async function addOverlap(
   const result: Chunk[] = [];
 
   for (let i = 0; i < chunks.length; i++) {
-    const current = { ...chunks[i] };
+    const current = { ...chunks[i]! };
 
     if (i > 0) {
-      const prev = chunks[i - 1];
+      const prev = chunks[i - 1]!;
       const totalTokens = prev.size_tokens || 1;
       const charsPerToken = Math.max(
         prev.content.length / totalTokens,

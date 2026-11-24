@@ -30,6 +30,13 @@ describe("Embedder interface", () => {
         dimensions: 1536,
         tokens_in: text.split(" ").length,
       }),
+      embedBatch: async (texts: string[]) =>
+        texts.map((text) => ({
+          vector: [0.1, 0.2],
+          model: "text-embedding-3-small",
+          dimensions: 1536,
+          tokens_in: text.split(" ").length,
+        })),
     };
 
     expect(typeof embedder.embed).toBe("function");
@@ -47,6 +54,13 @@ describe("Embedder interface", () => {
         dimensions: 2,
         tokens_in: 1,
       }),
+      embedBatch: async (texts: string[]) =>
+        texts.map((text) => ({
+          vector: text === "hello" ? [0.5, 0.5] : [0.0, 0.0],
+          model: "test-model",
+          dimensions: 2,
+          tokens_in: 1,
+        })),
     };
 
     const result = await embedder.embed("hello");
@@ -115,17 +129,17 @@ describe("EmbedderRegistry interface", () => {
       model: "test",
       dimensions: 128,
       embed: async () => ({ vector: [], model: "test", dimensions: 128, tokens_in: 0 }),
+      embedBatch: async (texts: string[]) =>
+        texts.map(() => ({ vector: [], model: "test", dimensions: 128, tokens_in: 0 })),
     };
 
+    const entries = new Map<string, Embedder>([["code", mockEmbedder]]);
     const registry: EmbedderRegistry = {
-      embedders: new Map<string, Embedder>([
-        ["code", mockEmbedder],
-      ]),
       getEmbedder(sourceType: string) {
-        return this.embedders.get(sourceType) ?? null;
+        return entries.get(sourceType) ?? null;
       },
-      register(sourceType: string, embedder: Embedder, priority: number) {
-        this.embedders.set(sourceType, embedder);
+      register(sourceType: string, embedder: Embedder) {
+        entries.set(sourceType, embedder);
       },
     };
 

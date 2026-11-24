@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeAll, afterAll } from "bun:test";
-import { ChokidarWatcher } from "../../../src/infrastructure/watcher/ChokidarWatcher";
+import { ChokidarWatcher, createIgnoreMatcher } from "../../../src/infrastructure/watcher/ChokidarWatcher";
 import { mkdtempSync, writeFileSync, unlinkSync, realpathSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -72,6 +72,20 @@ describe("ChokidarWatcher", () => {
 
     expect(unlinked.length).toBeGreaterThanOrEqual(1);
     expect(unlinked.some((p) => p.includes("delete-me.txt"))).toBe(true);
+  });
+
+  test("ignore matcher covers dependency and index directories", () => {
+    const ignored = createIgnoreMatcher([
+      "**/node_modules/**",
+      "**/.git/**",
+      "**/.indeX/**",
+    ]);
+    expect(ignored).toBeDefined();
+    expect(ignored!("C:/project/node_modules/pkg/index.js")).toBe(true);
+    expect(ignored!("C:/project/.git/config")).toBe(true);
+    expect(ignored!("C:/project/.indeX/watch.json")).toBe(true);
+    expect(ignored!("C:/project/src/index.ts")).toBe(false);
+    expect(createIgnoreMatcher([])).toBeUndefined();
   });
 
   test("debounce fires only once within 500ms for rapid changes", async () => {

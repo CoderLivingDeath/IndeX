@@ -17,7 +17,7 @@ import type {
 import type { Hasher } from "../../domain/systems/HashingSystem";
 import type { SourceRepository } from "../../domain/ports/SourceRepository";
 import type { Logger } from "../../domain/ports/Logger";
-import type { ContextPacker } from "../../domain/systems/ContextPackagingSystem";
+import type { SearchService } from "../../domain/services/SearchService";
 
 // ── IndexSystems ───────────────────────────────────────────────
 // Required by IndexUseCase — full pipeline: filter → parse → chunk →
@@ -33,12 +33,11 @@ export interface IndexSystems {
 }
 
 // ── SearchSystems ───────────────────────────────────────────────
-// Required by SearchUseCase — embed query → search repo → (optionally)
-// pack results for LLM consumption.
+// Required by SearchUseCase — embed the query once, then delegate ranking
+// to the single SearchService pipeline.
 export interface SearchSystems {
   embedder: Embedder;
-  repo: SourceRepository;
-  packer: ContextPacker;
+  ranker: SearchService;
   logger: Logger;
 }
 

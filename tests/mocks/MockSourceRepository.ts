@@ -122,6 +122,15 @@ export class MockSourceRepository implements SourceRepository {
     return false;
   }
 
+  async getEmbeddingBySemanticHash(hash: string): Promise<number[] | null> {
+    for (const source of this.sources.values()) {
+      if (source.semantic_blake3 === hash && source.embeddings.length > 0) {
+        return source.embeddings;
+      }
+    }
+    return null;
+  }
+
   async hasModelEmbedding(id: string): Promise<boolean> {
     const source = this.sources.get(id);
     if (!source) return false;

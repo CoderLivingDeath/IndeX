@@ -1,14 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import type { SourceRepository } from "../../../src/domain/ports/SourceRepository";
-import type { Embedder } from "../../../src/domain/systems/EmbeddingSystem";
 import type {
   SearchQuery,
   SearchResult,
   SourceData,
   SourceType,
 } from "../../../src/domain/types";
-import { MockEmbedder } from "../../mocks/MockEmbedder";
 import { MockSourceRepository } from "../../mocks/MockSourceRepository";
 import { SearchService } from "../../../src/domain/services/SearchService";
 
@@ -18,28 +16,28 @@ import { SearchService } from "../../../src/domain/services/SearchService";
 
 function makeSourceData(overrides: Partial<SourceData> & { id: string; content: string }): SourceData {
   const now = new Date().toISOString();
+  const { id, content, ...rest } = overrides;
   return {
-    id: overrides.id,
-    chunk_id: `chunk-${overrides.id}`,
-    source_id: `src-${overrides.id}`,
+    id,
+    chunk_id: `chunk-${id}`,
+    source_id: `src-${id}`,
     type: "generic" as SourceType,
-    title: `file-${overrides.id}.txt`,
-    content: overrides.content,
-    tags: overrides.tags ?? [],
-    path: `/fixtures/file-${overrides.id}.txt`,
-    file_blake3: `blake3-${overrides.id}`,
-    semantic_blake3: `sem-${overrides.id}`,
+    title: `file-${id}.txt`,
+    content,
+    tags: rest.tags ?? [],
+    path: `/fixtures/file-${id}.txt`,
+    file_blake3: `blake3-${id}`,
+    semantic_blake3: `sem-${id}`,
     chunk_index: 0,
     total_chunks: 1,
     embeddings: [],
-    metadata: overrides.metadata ?? { kind: "generic", encoding: "utf-8" },
+    metadata: rest.metadata ?? { kind: "generic", encoding: "utf-8" },
     created_at: now,
     updated_at: now,
-    ...overrides,
+    ...rest,
   };
 }
 
-/** Seed a MockSourceRepository with the given content strings, returning an array of SourceData. */
 async function seedRepo(
   repo: MockSourceRepository,
   contents: { content: string; tags?: string[]; type?: SourceType }[],
@@ -56,6 +54,15 @@ async function seedRepo(
   return sources;
 }
 
+/** Minimal repository whose search results are supplied by a callback. */
+function fakeRepo(
+  handler: (query: SearchQuery) => SearchResult[],
+): SourceRepository {
+  return {
+    search: async (query: SearchQuery) => handler(query),
+  } as unknown as SourceRepository;
+}
+
 // --------------------------------------------------------------------------
 // Tests
 // --------------------------------------------------------------------------
@@ -64,12 +71,9 @@ describe("SearchService", () => {
   // ── Semantic mode ──────────────────────────────────────────
 
   describe("semantic search", () => {
-    test("routes to repo with semantic mode", async () => {
+    test("passes the query vector to the repository", async () => {
       const repo = new MockSourceRepository();
-      await seedRepo(repo, [
-        { content: "the quick brown fox" },
-        { content: "jumps over the lazy dog" },
-      ]);
+      await seedRepo(repo, [{ content: "the quick brown fox" }]);
 
       let capturedQuery: SearchQuery | null = null;
       const originalSearch = repo.search.bind(repo);
@@ -78,38 +82,54 @@ describe("SearchService", () => {
         return originalSearch(q);
       };
 
-      const embedder = new MockEmbedder("sem-model", 64);
-      const service = new SearchService(embedder, repo);
+      const service = new SearchService(repo);
+      const results = await service.execute(
+        { text: "quick brown", mode: "semantic", top_k: 10 },
+        [1, 0, 0],
+      );
 
-      const results = await service.search({
-        text: "quick brown",
+      expect(capturedQuery).not.toBeNull();
+      expect(capturedQuery!.mode).toBe("semantic");
+      expect(capturedQuery!.vector).toEqual([1, 0, 0]);
+      expect(results.length).toBeGreaterThan(0);
+    });
+
+    test("returns empty results without a vector and does not call the repo", async () => {
+      let called = false;
+      const repo = fakeRepo(() => {
+        called = true;
+        return [];
+      });
+
+      const service = new SearchService(repo);
+      const results = await service.execute({
+        text: "anything",
         mode: "semantic",
         top_k: 10,
       });
 
-      expect(capturedQuery).not.toBeNull();
-      expect(capturedQuery!.mode).toBe("semantic");
-      expect(results.length).toBeGreaterThan(0);
+      expect(results).toEqual([]);
+      expect(called).toBe(false);
     });
 
-    test("calls embedder with query text", async () => {
-      const repo = new MockSourceRepository();
-      await seedRepo(repo, [{ content: "anything" }]);
-
-      let embeddedText = "";
-      const embedder: Embedder = {
-        model: "spy",
-        dimensions: 4,
-        embed: async (text: string) => {
-          embeddedText = text;
-          return { vector: [0, 0, 0, 0], model: "spy", dimensions: 4, tokens_in: 1 };
+    test("averages model_scores when present", async () => {
+      const repo = fakeRepo(() => [
+        {
+          source: makeSourceData({ id: "m1", content: "target" }),
+          score: 0.1,
+          match_type: "semantic",
+          model_scores: { "model-a": 0.8, "model-b": 0.6 },
         },
-      };
+      ]);
 
-      const service = new SearchService(embedder, repo);
-      await service.search({ text: "query-text", mode: "semantic", top_k: 10 });
+      const service = new SearchService(repo);
+      const results = await service.execute(
+        { text: "target", mode: "semantic", top_k: 10 },
+        [1],
+      );
 
-      expect(embeddedText).toBe("query-text");
+      expect(results).toHaveLength(1);
+      expect(results[0]!.score).toBeCloseTo(0.7, 5);
     });
   });
 
@@ -130,13 +150,13 @@ describe("SearchService", () => {
         return originalSearch(q);
       };
 
-      const service = new SearchService(new MockEmbedder("k", 4), repo);
-      await service.search({ text: "great", mode: "keyword", top_k: 10 });
+      const service = new SearchService(repo);
+      await service.execute({ text: "great", mode: "keyword", top_k: 10 });
 
       expect(capturedMode).toBe("keyword");
     });
 
-    test("returns results scored by TF overlap", async () => {
+    test("returns matches scored in (0, 1]", async () => {
       const repo = new MockSourceRepository();
       await seedRepo(repo, [
         { content: "nodejs typescript express" },
@@ -144,17 +164,18 @@ describe("SearchService", () => {
         { content: "typescript react nodejs" },
       ]);
 
-      const service = new SearchService(new MockEmbedder("k", 4), repo);
-      const results = await service.search({
+      const service = new SearchService(repo);
+      const results = await service.execute({
         text: "typescript",
         mode: "keyword",
         top_k: 10,
       });
 
-      // docs containing "typescript" returned; doc with no match filtered out
       expect(results.length).toBe(2);
       for (const r of results) {
         expect(r.source.content).toMatch(/typescript/);
+        expect(r.score).toBeGreaterThan(0);
+        expect(r.score).toBeLessThanOrEqual(1);
       }
     });
   });
@@ -162,11 +183,9 @@ describe("SearchService", () => {
   // ── AST mode ─────────────────────────────────────────────
 
   describe("ast search", () => {
-    test("routes to repo with ast mode", async () => {
+    test("routes to repo with ast mode and keeps the ast match type", async () => {
       const repo = new MockSourceRepository();
-      await seedRepo(repo, [
-        { content: "some file content" },
-      ]);
+      await seedRepo(repo, [{ content: "import zod from 'zod'" }]);
 
       let capturedMode = "";
       const originalSearch = repo.search.bind(repo);
@@ -175,21 +194,14 @@ describe("SearchService", () => {
         return originalSearch(q);
       };
 
-      const service = new SearchService(new MockEmbedder("k", 4), repo);
-      await service.search({ text: "import:zod", mode: "ast", top_k: 10 });
+      const service = new SearchService(repo);
+      const results = await service.execute({
+        text: "zod",
+        mode: "ast",
+        top_k: 10,
+      });
 
       expect(capturedMode).toBe("ast");
-    });
-
-    test("returns results with ast match_type", async () => {
-      const repo = new MockSourceRepository();
-      await seedRepo(repo, [
-        { content: "import zod from 'zod'" },
-      ]);
-
-      const service = new SearchService(new MockEmbedder("k", 4), repo);
-      const results = await service.search({ text: "zod", mode: "ast", top_k: 10 });
-
       expect(results.length).toBeGreaterThan(0);
       for (const r of results) {
         expect(r.match_type).toBe("ast");
@@ -208,93 +220,74 @@ describe("SearchService", () => {
         { content: "quick brown rabbit" },
       ]);
 
-      const embedder: Embedder = {
-        model: "hybrid-model",
-        dimensions: 8,
-        embed: async () => ({
-          vector: [0, 0, 0, 0, 0, 0, 0, 0],
-          model: "hybrid-model",
-          dimensions: 8,
-          tokens_in: 1,
-        }),
-      };
+      const service = new SearchService(repo, { hybrid_weight: 0.7 });
+      const results = await service.execute(
+        { text: "quick brown", mode: "hybrid", top_k: 10 },
+        [1, 0, 0],
+      );
 
-      const service = new SearchService(embedder, repo, { hybrid_weight: 0.7 });
+      expect(results.length).toBe(2);
+      for (const r of results) {
+        expect(r.match_type).toBe("hybrid");
+        expect(r.score).toBeGreaterThan(0);
+        expect(r.score).toBeLessThanOrEqual(1);
+      }
+    });
 
-      const results = await service.search({
+    test("returns empty results without a vector", async () => {
+      const repo = new MockSourceRepository();
+      await seedRepo(repo, [{ content: "quick brown fox" }]);
+
+      const service = new SearchService(repo);
+      const results = await service.execute({
         text: "quick brown",
         mode: "hybrid",
         top_k: 10,
       });
 
-      expect(results.length).toBe(2); // doc with no match filtered out
-      for (const r of results) {
-        expect(r.match_type).toBe("hybrid");
-        // score should be weighted combination
-        expect(r.score).toBeGreaterThan(0);
-      }
+      expect(results).toEqual([]);
     });
 
-    test("normalizes BM25 keyword scores before merging", async () => {
-      const repo = new MockSourceRepository();
-      await seedRepo(repo, [
-        { content: "aaaa bbbb cccc dddd" }, // score = 0 / 4 = 0 (no match)
-        { content: "query word here" }, // score for "query": 1 / 4 = 0.25
-        { content: "query query query query word" }, // score for "query": 1 / 5 = 0.2
-      ]);
-
-      const embedder: Embedder = {
-        model: "m",
-        dimensions: 2,
-        embed: async () => ({
-          vector: [0, 0],
-          model: "m",
-          dimensions: 2,
-          tokens_in: 1,
-        }),
-      };
-
-      const service = new SearchService(embedder, repo, { hybrid_weight: 0.5 });
-
-      const results = await service.search({
-        text: "query",
-        mode: "hybrid",
-        top_k: 10,
+    test("uses hybrid_weight from options", async () => {
+      const source = makeSourceData({ id: "weighted", content: "weighted" });
+      const repo = fakeRepo((query) => {
+        if (query.mode === "semantic") {
+          return [{ source, score: 1, match_type: "semantic" }];
+        }
+        if (query.mode === "keyword") {
+          return [{ source, score: 1, match_type: "keyword" }];
+        }
+        return [];
       });
 
-      // Non-matching doc (score 0) filtered out; 2 relevant results remain
-      expect(results.length).toBe(2);
-      for (const r of results) {
-        expect(r.score).toBeGreaterThan(0);
-      }
+      const service = new SearchService(repo, { hybrid_weight: 0.25 });
+      const results = await service.execute(
+        { text: "weighted", mode: "hybrid", top_k: 10 },
+        [1],
+      );
+
+      // 0.25 * semantic + 0.75 * keyword = 1.0
+      expect(results).toHaveLength(1);
+      expect(results[0]!.score).toBeCloseTo(1, 5);
+      expect(results[0]!.model_scores).toEqual({ semantic: 1, keyword: 1 });
     });
 
-    test("uses default hybrid_weight of 0.7", async () => {
-      const repo = new MockSourceRepository();
-      await seedRepo(repo, [
-        { content: "test document content here" },
-      ]);
+    test("uses default hybrid_weight of 0.7 when keyword leg is empty", async () => {
+      const source = makeSourceData({ id: "sem-only", content: "only semantic" });
+      const repo = fakeRepo((query) =>
+        query.mode === "semantic"
+          ? [{ source, score: 1, match_type: "semantic" }]
+          : [],
+      );
 
-      const embedder: Embedder = {
-        model: "m",
-        dimensions: 2,
-        embed: async () => ({
-          vector: [0, 0],
-          model: "m",
-          dimensions: 2,
-          tokens_in: 1,
-        }),
-      };
+      const service = new SearchService(repo);
+      const results = await service.execute(
+        { text: "semantic", mode: "hybrid", top_k: 10 },
+        [1],
+      );
 
-      const service = new SearchService(embedder, repo);
-      const results = await service.search({
-        text: "test",
-        mode: "hybrid",
-        top_k: 10,
-      });
-
-      expect(results.length).toBe(1);
-      expect(results[0]!.match_type).toBe("hybrid");
+      expect(results).toHaveLength(1);
+      expect(results[0]!.score).toBeCloseTo(0.7, 5);
     });
   });
 
@@ -309,8 +302,8 @@ describe("SearchService", () => {
         { content: "gamma content", tags: ["important", "urgent"] },
       ]);
 
-      const service = new SearchService(new MockEmbedder("m", 4), repo);
-      const results = await service.search({
+      const service = new SearchService(repo);
+      const results = await service.execute({
         text: "content",
         mode: "keyword",
         top_k: 10,
@@ -331,8 +324,8 @@ describe("SearchService", () => {
         { content: "generic stuff", type: "generic" as SourceType },
       ]);
 
-      const service = new SearchService(new MockEmbedder("m", 4), repo);
-      const results = await service.search({
+      const service = new SearchService(repo);
+      const results = await service.execute({
         text: "stuff",
         mode: "keyword",
         top_k: 10,
@@ -342,42 +335,20 @@ describe("SearchService", () => {
       expect(results.length).toBe(1);
       expect(results[0]!.source.type).toBe("code");
     });
-  });
 
-  // ── Multi-model averaging ──────────────────────────────────
-
-  describe("multi-model averaging", () => {
-    test("averages model_scores for semantic results", async () => {
+    test("filters results below min_score", async () => {
       const repo = new MockSourceRepository();
-      await seedRepo(repo, [
-        { content: "target document" },
-      ]);
+      await seedRepo(repo, [{ content: "hello world" }]);
 
-      // Override search to return results with model_scores
-      const originalSearch = repo.search.bind(repo);
-      repo.search = async (q: SearchQuery) => {
-        const base = await originalSearch(q);
-        return base.map((r) => ({
-          ...r,
-          model_scores: { "model-a": 0.8, "model-b": 0.6 },
-        }));
-      };
-
-      const service = new SearchService(
-        new MockEmbedder("m", 4),
-        repo,
-      );
-
-      const results = await service.search({
-        text: "target",
-        mode: "semantic",
+      const service = new SearchService(repo);
+      const results = await service.execute({
+        text: "hello",
+        mode: "keyword",
         top_k: 10,
+        min_score: 0.99,
       });
 
-      // Average of 0.8 and 0.6 = 0.7
-      for (const r of results) {
-        expect(r.score).toBe(0.7);
-      }
+      expect(results).toEqual([]);
     });
   });
 
@@ -386,13 +357,12 @@ describe("SearchService", () => {
   describe("empty index", () => {
     test("returns empty array when index has no data", async () => {
       const repo = new MockSourceRepository();
-      const service = new SearchService(new MockEmbedder("m", 4), repo);
+      const service = new SearchService(repo);
 
-      const results = await service.search({
-        text: "anything",
-        mode: "semantic",
-        top_k: 10,
-      });
+      const results = await service.execute(
+        { text: "anything", mode: "semantic", top_k: 10 },
+        [1, 2, 3],
+      );
 
       expect(results).toEqual([]);
     });

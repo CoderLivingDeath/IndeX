@@ -251,9 +251,13 @@ export class LanceDbSourceRepository implements SourceRepository {
     if (!table) return [];
 
     const topK = query.top_k ?? 10;
-    let rows: Record<string, unknown>[];
+    const hasVector = Array.isArray(query.vector) && query.vector.length > 0;
 
-    const hasVector = query.filters?.vector && Array.isArray(query.filters.vector) && (query.filters.vector as number[]).length > 0;
+    // AST mode queries the file_index table, not the sources table.
+    if (query.mode === "ast") {
+      return this.executeAstSearch(query);
+    }
+
     const filters: string[] = [];
     if (query.source_types && query.source_types.length > 0) {
       filters.push(buildTypeFilter(query.source_types));
@@ -263,56 +267,39 @@ export class LanceDbSourceRepository implements SourceRepository {
     }
     const filterClause = filters.length > 0 ? filters.join(" AND ") : undefined;
 
-    if (query.mode === "hybrid" && hasVector) {
-      // Hybrid: combine ANN + FTS results, then merge & re-rank
-      const vec = Float32Array.from(query.filters!.vector as number[]);
-      const annQuery = table.vectorSearch(vec).limit(topK * 2);
-      if (filterClause) annQuery.where(filterClause);
-      let annRows: Record<string, unknown>[];
-      try { annRows = (await annQuery.toArray()) as Record<string, unknown>[]; } catch { annRows = []; }
+    let rows: Record<string, unknown>[];
 
-      let ftsRows: Record<string, unknown>[];
-      try {
-        ftsRows = await this.executeKeywordSearch(table, query.text, topK * 2, query.source_types, query.tags);
-      } catch { ftsRows = []; }
+    if (query.mode === "semantic" || query.mode === "hybrid") {
+      // No vector means no semantic search — never silently fall back to FTS.
+      if (!hasVector) return [];
 
-      // Merge by id, keep max normalised score
-      const merged = new Map<string, { row: Record<string, unknown>; score: number }>();
-      const maxAnn = annRows.reduce((m, r) => Math.max(m, (r._distance as number) ?? 0), 0) || 1;
-      const maxFts = ftsRows.reduce((m, r) => Math.max(m, (r._score as number) ?? 0), 0) || 1;
-
-      for (const r of annRows) {
-        const id = r.id as string;
-        const norm = ((r._distance as number) ?? 0) / maxAnn;
-        merged.set(id, { row: r, score: norm * 0.7 }); // ANN weight 0.7
-      }
-      for (const r of ftsRows) {
-        const id = r.id as string;
-        const norm = ((r._score as number) ?? 0) / maxFts;
-        const existing = merged.get(id);
-        merged.set(id, { row: r, score: (existing?.score ?? 0) + norm * 0.3 }); // FTS weight 0.3
-      }
-
-      rows = Array.from(merged.entries())
-        .sort((a, b) => b[1].score - a[1].score)
-        .slice(0, topK)
-        .map(([, v]) => v.row);
-    } else if (query.mode === "semantic" && hasVector) {
-      const vec = Float32Array.from(query.filters!.vector as number[]);
-      const lanceQuery = table.vectorSearch(vec).limit(topK);
+      const vec = Float32Array.from(query.vector!);
+      const lanceQuery = table.vectorSearch(vec)
+        .distanceType("cosine")
+        .limit(topK);
       if (filterClause) lanceQuery.where(filterClause);
       rows = (await lanceQuery.toArray()) as Record<string, unknown>[];
-    } else if (query.mode === "ast") {
-      return this.executeAstSearch(query);
     } else {
       rows = await this.executeKeywordSearch(table, query.text, topK, query.source_types, query.tags);
     }
 
-    const results: SearchResult[] = rows.map((r) => ({
-      source: this.recordToSourceData(r),
-      score: (r._score as number) ?? (r._distance as number) ?? 0,
-      match_type: query.mode,
-    }));
+    const results: SearchResult[] = rows.map((r) => {
+      const distance = r._distance as number | undefined;
+      const rawScore = r._score as number | undefined;
+      // Cosine distance → similarity in [0, 1]. FTS/_score is normalized by
+      // the ranking engine; a missing score means "matched but unranked".
+      const score = distance !== undefined
+        ? clamp01(1 - distance)
+        : (rawScore ?? (query.text ? 1 : 0));
+
+      return {
+        source: this.recordToSourceData(r),
+        score,
+        match_type: query.mode,
+      };
+    });
+
+    results.sort((a, b) => b.score - a.score);
 
     if (query.min_score !== undefined && query.min_score > 0) {
       return results.filter((r) => r.score >= query.min_score!);
@@ -393,6 +380,27 @@ export class LanceDbSourceRepository implements SourceRepository {
     return results.length > 0;
   }
 
+  async getEmbeddingBySemanticHash(hash: string): Promise<number[] | null> {
+    const table = await this.getSourcesTable();
+    if (!table) return null;
+
+    try {
+      const results = await table.query()
+        .where(`semantic_blake3 = '${escapeLanceSqlString(hash)}'`)
+        .limit(1)
+        .select(["embeddings"])
+        .toArray();
+
+      if (results.length === 0) return null;
+
+      const embedding = toNumberArray((results[0] as Record<string, unknown>).embeddings);
+      return embedding.length > 0 ? embedding : null;
+    } catch {
+      // Embeddings column may not exist yet (no embeddings indexed).
+      return null;
+    }
+  }
+
   async hasModelEmbedding(id: string): Promise<boolean> {
     const table = await this.getSourcesTable();
     if (!table) return false;
@@ -410,10 +418,7 @@ export class LanceDbSourceRepository implements SourceRepository {
 
     if (results.length === 0) return false;
 
-    const emb = (results[0] as Record<string, unknown>).embeddings;
-    if (emb instanceof Float32Array) return emb.length > 0;
-    if (Array.isArray(emb)) return emb.length > 0;
-    return emb !== null && emb !== undefined;
+    return toNumberArray((results[0] as Record<string, unknown>).embeddings).length > 0;
   }
 
   async getSourceIdsByHash(hash: string): Promise<string[]> {
@@ -496,7 +501,14 @@ export class LanceDbSourceRepository implements SourceRepository {
   async stats(): Promise<IndexStats> {
     const table = await this.getSourcesTable();
     if (!table) {
-      return { total_sources: 0, total_chunks: 0, total_files: 0, total_tokens: 0, last_indexed: new Date().toISOString() };
+      return {
+        total_sources: 0,
+        total_chunks: 0,
+        total_files: 0,
+        total_tokens: 0,
+        total_deduped_chunks: 0,
+        last_indexed: new Date().toISOString(),
+      };
     }
 
     const totalChunks = await table.countRows();
@@ -520,8 +532,8 @@ export class LanceDbSourceRepository implements SourceRepository {
       total_sources: uniquePaths.size,
       total_chunks: totalChunks,
       total_files: uniquePaths.size,
-      total_tokens: dbTotalTokens ? parseInt(dbTotalTokens, 10) || 0 : 0,
-      total_deduped_chunks: dbDedupedChunks ? parseInt(dbDedupedChunks, 10) || 0 : 0,
+      total_tokens: toCount(dbTotalTokens),
+      total_deduped_chunks: toCount(dbDedupedChunks),
       last_indexed: maxDate || new Date().toISOString(),
     };
   }
@@ -698,15 +710,7 @@ export class LanceDbSourceRepository implements SourceRepository {
   }
 
   private recordToSourceData(record: Record<string, unknown>): SourceData {
-    const rawEmb = (record as Record<string, unknown>).embeddings;
-    let embeddings: number[];
-    if (rawEmb instanceof Float32Array) {
-      embeddings = Array.from(rawEmb);
-    } else if (Array.isArray(rawEmb)) {
-      embeddings = rawEmb as number[];
-    } else {
-      embeddings = [];
-    }
+    const embeddings = toNumberArray((record as Record<string, unknown>).embeddings);
 
     const rawTags = record.tags;
     let tags: string[];
@@ -809,6 +813,37 @@ export class LanceDbSourceRepository implements SourceRepository {
 /** Escape a string for use in a LanceDB SQL predicate (single-quoted). */
 function escapeLanceSqlString(value: string): string {
   return value.replace(/'/g, "''");
+}
+
+/** Coerce a db_meta value into a non-negative integer count. */
+function toCount(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") return parseInt(value, 10) || 0;
+  return 0;
+}
+
+/** Clamp a numeric score to the [0, 1] relevance range. */
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+/**
+ * Convert LanceDB's fixed-size-list representation (apache-arrow `Vector`,
+ * `Float32Array`, or a plain array) into a plain `number[]`.
+ */
+function toNumberArray(raw: unknown): number[] {
+  if (raw instanceof Float32Array) return Array.from(raw);
+  if (Array.isArray(raw)) return raw as number[];
+  if (
+    raw &&
+    typeof raw === "object" &&
+    "toArray" in raw &&
+    typeof (raw as { toArray?: unknown }).toArray === "function"
+  ) {
+    return Array.from((raw as { toArray: () => ArrayLike<number> }).toArray());
+  }
+  return [];
 }
 
 /** Build a SQL IN filter for source types. */

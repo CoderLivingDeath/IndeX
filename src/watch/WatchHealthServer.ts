@@ -79,10 +79,16 @@ export function startHealthServer(directory: string, logger: Logger, port?: numb
     },
   });
 
-  logger.info(`Health server started on 127.0.0.1:${server.port}`);
+  const boundPort = server.port;
+  if (boundPort === undefined) {
+    server.stop(true);
+    throw new Error("Health server started without a bound port");
+  }
+
+  logger.info(`Health server started on 127.0.0.1:${boundPort}`);
 
   return {
-    port: server.port,
+    port: boundPort,
     stop: async () => {
       server.stop(true); // true = close active connections
     },

@@ -53,6 +53,9 @@ export interface SourceData {
 
 /**
  * A search query against the index.
+ *
+ * `vector` is the query embedding for semantic/hybrid modes. It is a
+ * first-class field so it cannot be silently dropped by adapters.
  */
 export interface SearchQuery {
   text: string;
@@ -61,11 +64,19 @@ export interface SearchQuery {
   top_k: number;
   source_types?: SourceType[];
   min_score?: number;
+  /** Query embedding for semantic/hybrid search. */
+  vector?: number[];
+  /**
+   * Adapter-specific filters. Do NOT use this to transport the query vector.
+   */
   filters?: Record<string, unknown>;
 }
 
 /**
  * A single search result.
+ *
+ * `score` is a relevance value in [0, 1] where higher is better, regardless
+ * of the search mode.
  */
 export interface SearchResult {
   source: SourceData;

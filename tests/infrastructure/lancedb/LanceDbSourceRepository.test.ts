@@ -373,4 +373,107 @@ describe("LanceDbSourceRepository", () => {
       expect(ids).toEqual([]);
     });
   });
+
+  // ── Vector search contract ─────────────────────────────────
+
+  describe("vector search", () => {
+    it("uses query.vector and scores identical vectors near 1", async () => {
+      await repo.upsert(makeSourceData({
+        id: "v1",
+        path: "/alpha.ts",
+        embeddings: [1, 0, 0],
+      }));
+      await repo.upsert(makeSourceData({
+        id: "v2",
+        path: "/beta.ts",
+        embeddings: [0, 1, 0],
+      }));
+
+      const results = await repo.search({
+        text: "anything",
+        mode: "semantic",
+        top_k: 10,
+        vector: [1, 0, 0],
+      });
+
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0]!.source.path).toBe("/alpha.ts");
+      expect(results[0]!.score).toBeGreaterThan(0.9);
+      expect(results[0]!.score).toBeLessThanOrEqual(1);
+    });
+
+    it("returns empty results for semantic mode without a vector", async () => {
+      await repo.upsert(makeSourceData({ id: "v3", content: "alpha content", embeddings: [1, 0, 0] }));
+
+      const results = await repo.search({ text: "alpha", mode: "semantic", top_k: 10 });
+      expect(results).toEqual([]);
+    });
+
+    it("returns empty results for hybrid mode without a vector", async () => {
+      await repo.upsert(makeSourceData({ id: "v4", content: "alpha content", embeddings: [1, 0, 0] }));
+
+      const results = await repo.search({ text: "alpha", mode: "hybrid", top_k: 10 });
+      expect(results).toEqual([]);
+    });
+
+    it("filters vector results by tags", async () => {
+      await repo.upsert(makeSourceData({
+        id: "tag1",
+        path: "/devops.ts",
+        content: "deploy",
+        tags: ["devops"],
+        embeddings: [1, 0, 0],
+      }));
+      await repo.upsert(makeSourceData({
+        id: "tag2",
+        path: "/frontend.ts",
+        content: "deploy",
+        tags: ["frontend"],
+        embeddings: [1, 0, 0],
+      }));
+
+      const results = await repo.search({
+        text: "deploy",
+        mode: "semantic",
+        top_k: 10,
+        vector: [1, 0, 0],
+        tags: ["devops"],
+      });
+
+      expect(results.length).toBe(1);
+      expect(results[0]!.source.tags).toContain("devops");
+    });
+  });
+
+  describe("getEmbeddingBySemanticHash", () => {
+    it("returns the stored vector for a duplicate hash", async () => {
+      await repo.upsert(makeSourceData({
+        id: "dup1",
+        semantic_blake3: "shared-hash",
+        embeddings: [0.25, 0.5, 0.75],
+      }));
+
+      const embedding = await repo.getEmbeddingBySemanticHash("shared-hash");
+      expect(embedding).toEqual([0.25, 0.5, 0.75]);
+    });
+
+    it("returns null for a missing hash", async () => {
+      await repo.upsert(makeSourceData({ id: "dup2", semantic_blake3: "other" }));
+      expect(await repo.getEmbeddingBySemanticHash("nope")).toBeNull();
+    });
+
+    it("returns null when the matching row has no embedding", async () => {
+      await repo.upsert(makeSourceData({
+        id: "dup3",
+        semantic_blake3: "empty-emb",
+        embeddings: [],
+      }));
+      expect(await repo.getEmbeddingBySemanticHash("empty-emb")).toBeNull();
+    });
+
+    it("returns null when the table does not exist", async () => {
+      const emptyRepo = new LanceDbSourceRepository("memory://");
+      expect(await emptyRepo.getEmbeddingBySemanticHash("anything")).toBeNull();
+    });
+  });
 });

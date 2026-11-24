@@ -23,7 +23,7 @@ describe("ParagraphChunker", () => {
     const result = await chunker.chunk(text);
 
     expect(result.length).toBeGreaterThanOrEqual(2);
-    expect(result[0].strategy).toBe("paragraph");
+    expect(result[0]!.strategy).toBe("paragraph");
   });
 
   it("returns one chunk per paragraph that fits within max_tokens", async () => {
@@ -67,7 +67,7 @@ describe("ParagraphChunker", () => {
     const result = await chunker.chunk(text);
 
     expect(result).toHaveLength(1);
-    expect(result[0].content).toBe(text);
+    expect(result[0]!.content).toBe(text);
   });
 
   it("correctly sets chunk_index and total_chunks", async () => {
@@ -76,8 +76,8 @@ describe("ParagraphChunker", () => {
 
     const result = await chunker.chunk(text);
 
-    expect(result[0].chunk_index).toBe(0);
-    expect(result[result.length - 1].chunk_index).toBe(result.length - 1);
+    expect(result[0]!.chunk_index).toBe(0);
+    expect(result[result.length - 1]!.chunk_index).toBe(result.length - 1);
     for (const chunk of result) {
       expect(chunk.total_chunks).toBe(result.length);
     }

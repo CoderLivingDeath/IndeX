@@ -43,7 +43,7 @@ export function registerWatch(program: Command): void {
   // Hidden command — used internally by startWatch to spawn the daemon
   program
     .command("watch-daemon")
-    .description("(internal)", { hidden: true })
+    .description("(internal)")
     .option("--dir <path>", "Directory to watch")
     .action(async (options: { dir?: string }) => {
       const dir = options.dir ? resolve(options.dir) : process.cwd();

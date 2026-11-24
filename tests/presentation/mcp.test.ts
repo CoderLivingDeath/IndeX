@@ -2,10 +2,14 @@
 // MCP — tests for CLI command, tool registry, handlers, and integration
 // ---------------------------------------------------------------------------
 
-import { describe, expect, test, beforeAll } from "bun:test";
+import { describe, expect, test, beforeAll, afterAll } from "bun:test";
+import { mkdtempSync, writeFileSync, rmSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import { parseArgs } from "../../src/presentation/cli/format";
 import type { McpDependencies } from "../../src/presentation/mcp/IndeXMcpServer";
 import { SearchUseCase } from "../../src/application/SearchUseCase";
+import { SearchService } from "../../src/domain/services/SearchService";
 import { IndexUseCase } from "../../src/application/IndexUseCase";
 import { PackUseCase } from "../../src/application/PackUseCase";
 import { ChunkUseCase } from "../../src/application/ChunkUseCase";
@@ -27,7 +31,6 @@ const mockFileFilter: FileFilter = {
 
 const mockParserRegistry: SourceParserRegistry = {
   getParser: () => null,
-  getParsers: () => [],
   register: () => {},
 };
 
@@ -39,7 +42,6 @@ const mockChunker: Chunker = {
 const mockEmbedderRegistry: EmbedderRegistry = {
   getEmbedder: () => null,
   register: () => {},
-  getModels: () => [],
 };
 
 const mockLogger = new SilentLogger();
@@ -51,16 +53,7 @@ function createMockDeps(): McpDependencies {
 
   const search = new SearchUseCase({
     embedder: new MockEmbedder("test-model", 4),
-    repo,
-    packer: {
-      pack: async (results: any[]) => ({
-        markdown: results.map((r) => r.source.content).join("\n\n"),
-        chunks_used: results.length,
-        total_tokens: 0,
-        truncated: false,
-        source_notes: [],
-      }),
-    },
+    ranker: new SearchService(repo),
     logger: mockLogger,
   } as any);
 
@@ -105,9 +98,16 @@ function createMockDeps(): McpDependencies {
 
 describe("MCP tool handlers", () => {
   let deps: McpDependencies;
+  let fixtureDir: string;
 
   beforeAll(() => {
     deps = createMockDeps();
+    fixtureDir = mkdtempSync(join(tmpdir(), "mcp-handlers-"));
+    writeFileSync(join(fixtureDir, "sample.ts"), "const sample = 1;", "utf-8");
+  });
+
+  afterAll(() => {
+    rmSync(fixtureDir, { recursive: true, force: true });
   });
 
   test("search handler returns structured results", async () => {
@@ -137,14 +137,14 @@ describe("MCP tool handlers", () => {
 
   test("chunk handler returns chunk stats", async () => {
     const { handleChunk } = await import("../../src/presentation/mcp/handlers/handleChunk");
-    const result = await handleChunk({ path: "." }, deps);
+    const result = await handleChunk({ path: fixtureDir }, deps);
     const parsed = JSON.parse(result.content[0]!.text);
     expect(parsed).toHaveProperty("total_chunks");
   });
 
   test("scan handler returns file list for valid directory", async () => {
     const { handleScan } = await import("../../src/presentation/mcp/handlers/handleScan");
-    const result = await handleScan({ path: "." }, deps);
+    const result = await handleScan({ path: fixtureDir }, deps);
     const parsed = JSON.parse(result.content[0]!.text);
     expect(parsed).toHaveProperty("total_files");
     expect(parsed).toHaveProperty("matched_files");
@@ -162,14 +162,21 @@ describe("MCP tool handlers", () => {
 
 describe("MCP pack handler", () => {
   let deps: McpDependencies;
+  let fixtureDir: string;
 
   beforeAll(() => {
     deps = createMockDeps();
+    fixtureDir = mkdtempSync(join(tmpdir(), "mcp-pack-"));
+    writeFileSync(join(fixtureDir, "sample.ts"), "const sample = 1;", "utf-8");
+  });
+
+  afterAll(() => {
+    rmSync(fixtureDir, { recursive: true, force: true });
   });
 
   test("pack handler returns text content", async () => {
     const { handlePack } = await import("../../src/presentation/mcp/handlers/handlePack");
-    const result = await handlePack({ path: "." }, deps);
+    const result = await handlePack({ path: fixtureDir }, deps);
     expect(result.content[0]!.type).toBe("text");
     expect(typeof result.content[0]!.text).toBe("string");
   });

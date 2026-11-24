@@ -2,7 +2,7 @@
 // Lazy app loader — imports the full application only when first called
 // ---------------------------------------------------------------------------
 
-import type { AppUseCases } from "../../../index";
+import type { AppUseCases } from "../../index";
 
 let appPromise: Promise<AppUseCases> | null = null;
 

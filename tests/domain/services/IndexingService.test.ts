@@ -242,4 +242,125 @@ describe("IndexingService", () => {
       rmSync(tmpDir, { recursive: true, force: true });
     });
   });
+
+  describe("embedding reuse (ingest dedup)", () => {
+    class CountingEmbedder extends MockEmbedder {
+      batchCalls = 0;
+      texts: string[] = [];
+
+      override async embedBatch(input: string[]) {
+        this.batchCalls++;
+        this.texts.push(...input);
+        return super.embedBatch(input);
+      }
+    }
+
+    function makeService(
+      repo: MockSourceRepository,
+      embedder: CountingEmbedder,
+    ): IndexingService {
+      return new IndexingService(
+        makeFilter((p) => p.endsWith(".ts")),
+        makeParserRegistry(simpleParser("code")),
+        {
+          type: "generic" as any,
+          chunk: async (text: string) => [{
+            content: "duplicate chunk",
+            core_content: text.includes("code") ? "shared core unit" : "other core unit",
+            chunk_index: 0,
+            total_chunks: 1,
+            strategy: "fixed",
+            size_tokens: 7,
+          }],
+        } as any,
+        new MockEmbedderRegistry({ code: embedder }),
+        repo,
+        new MockHasher(),
+      );
+    }
+
+    test("a fully duplicated file still keeps its own rows and path", async () => {
+      const tmpDir = createTempDir();
+      createTestFile(tmpDir, "a.ts", "same content");
+      createTestFile(tmpDir, "b.ts", "same content");
+
+      const repo = new MockSourceRepository();
+      const stats = await makeService(repo, new CountingEmbedder("m", 8)).index(tmpDir);
+
+      expect(stats.total_files).toBe(2);
+      expect(stats.total_chunks).toBe(2);
+      expect(stats.total_deduped_chunks).toBe(1);
+
+      const paths = await repo.getAllPaths();
+      expect(paths.sort()).toEqual([
+        join(tmpDir, "a.ts"),
+        join(tmpDir, "b.ts"),
+      ].sort());
+      expect((await repo.getByPath(join(tmpDir, "b.ts"))).length).toBe(1);
+
+      const results = await repo.search({
+        text: "duplicate",
+        mode: "keyword",
+        top_k: 10,
+      });
+      expect(results.some((r) => r.source.path === join(tmpDir, "b.ts"))).toBe(true);
+
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    test("reuses a stored embedding across runs without dropping rows", async () => {
+      const repo = new MockSourceRepository();
+      const firstDir = createTempDir();
+      createTestFile(firstDir, "a.ts", "same content");
+
+      const firstStats = await makeService(repo, new CountingEmbedder("m", 8)).index(firstDir);
+      expect(firstStats.total_deduped_chunks).toBe(0);
+
+      const secondDir = createTempDir();
+      createTestFile(secondDir, "b.ts", "same content");
+
+      const secondStats = await makeService(repo, new CountingEmbedder("m", 8)).index(secondDir);
+      expect(secondStats.total_deduped_chunks).toBe(1);
+      // Stats describe this run; the repository still holds both files.
+      expect(secondStats.total_chunks).toBe(1);
+      expect(secondStats.total_files).toBe(1);
+      expect(await repo.getAllPaths()).toHaveLength(2);
+      expect((await repo.getByPath(join(secondDir, "b.ts"))).length).toBe(1);
+
+      rmSync(firstDir, { recursive: true, force: true });
+      rmSync(secondDir, { recursive: true, force: true });
+    });
+
+    test("re-indexing the same directory does not duplicate rows", async () => {
+      const tmpDir = createTempDir();
+      createTestFile(tmpDir, "a.ts", "stable content");
+
+      const repo = new MockSourceRepository();
+      const service = makeService(repo, new CountingEmbedder("m", 8));
+
+      const first = await service.index(tmpDir);
+      expect(first.total_chunks).toBe(1);
+
+      const second = await service.index(tmpDir);
+      expect(second.total_chunks).toBe(1);
+      expect((await repo.getByPath(join(tmpDir, "a.ts"))).length).toBe(1);
+
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    test("does not embed identical content twice within one run", async () => {
+      const tmpDir = createTempDir();
+      createTestFile(tmpDir, "a.ts", "same content");
+      createTestFile(tmpDir, "b.ts", "same content");
+
+      const embedder = new CountingEmbedder("m", 8);
+      const repo = new MockSourceRepository();
+      await makeService(repo, embedder).index(tmpDir);
+
+      expect(embedder.batchCalls).toBe(1);
+      expect(embedder.texts).toHaveLength(1);
+
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
+  });
 });

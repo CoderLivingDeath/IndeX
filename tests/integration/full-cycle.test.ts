@@ -81,22 +81,13 @@ describe("Full pipeline integration", () => {
       logger: mockLogger,
     });
 
-    const searchService = new SearchService(mockEmbedder, repo, {
+    const searchService = new SearchService(repo, {
       hybrid_weight: 0.7,
     });
 
     searchUseCase = new SearchUseCase({
       embedder: mockEmbedder,
-      repo,
-      packer: {
-        pack: async (results: any[]) => ({
-          markdown: results.map((r) => r.source.content).join("\n\n"),
-          chunks_used: results.length,
-          total_tokens: 0,
-          truncated: false,
-          source_notes: results.map((r) => r.source.path),
-        }),
-      },
+      ranker: searchService,
       logger: mockLogger,
     });
   });

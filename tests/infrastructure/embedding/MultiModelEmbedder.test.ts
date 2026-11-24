@@ -46,6 +46,16 @@ function createSuccessEmbedder(
         tokens_in: text.split(/\s+/).filter(Boolean).length,
       };
     },
+    embedBatch: async (texts: string[]): Promise<Embedding[]> =>
+      Promise.all(texts.map(async (text) => {
+        if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+        return {
+          vector: Array.from({ length: dimensions }, (_, i) => i + 1),
+          model,
+          dimensions,
+          tokens_in: text.split(/\s+/).filter(Boolean).length,
+        };
+      })),
   };
 }
 
@@ -61,6 +71,9 @@ function createFailingEmbedder(
     model,
     dimensions,
     embed: async (_text: string): Promise<Embedding> => {
+      throw new Error(message);
+    },
+    embedBatch: async (): Promise<Embedding[]> => {
       throw new Error(message);
     },
   };
@@ -86,6 +99,16 @@ function createSpyEmbedder(
         tokens_in: text.length,
       };
     },
+    embedBatch: async (texts: string[]): Promise<Embedding[]> =>
+      Promise.all(texts.map(async (text) => {
+        calls.push({ text, timestamp: Date.now() });
+        return {
+          vector: Array.from({ length: dimensions }, (_, i) => i),
+          model,
+          dimensions,
+          tokens_in: text.length,
+        };
+      })),
   };
 }
 
@@ -142,9 +165,9 @@ describe("MultiModelEmbedder", () => {
     // If someone mistakenly returns an Embedding, it will NOT have both
     // keys as model names AND Embedding fields on the same level.
     expect(result.m1).toBeTruthy();
-    expect(result.m1.vector).toBeDefined();
+    expect(result.m1!.vector).toBeDefined();
     expect(result.m2).toBeTruthy();
-    expect(result.m2.vector).toBeDefined();
+    expect(result.m2!.vector).toBeDefined();
 
     // Confirm it's NOT a single Embedding (no top-level vector)
     expect((result as unknown as Embedding).vector).toBeUndefined();
@@ -162,10 +185,10 @@ describe("MultiModelEmbedder", () => {
     const result = await multi.embedAll("dimensional check");
 
     // Assert
-    expect(result.small.vector).toHaveLength(2);
-    expect(result.small.dimensions).toBe(2);
-    expect(result.large.vector).toHaveLength(384);
-    expect(result.large.dimensions).toBe(384);
+    expect(result.small!.vector).toHaveLength(2);
+    expect(result.small!.dimensions).toBe(2);
+    expect(result.large!.vector).toHaveLength(384);
+    expect(result.large!.dimensions).toBe(384);
   });
 
   // -----------------------------------------------------------------------
@@ -206,9 +229,9 @@ describe("MultiModelEmbedder", () => {
 
     // Assert
     expect(calls1).toHaveLength(1);
-    expect(calls1[0].text).toBe("specific input text");
+    expect(calls1[0]!.text).toBe("specific input text");
     expect(calls2).toHaveLength(1);
-    expect(calls2[0].text).toBe("specific input text");
+    expect(calls2[0]!.text).toBe("specific input text");
   });
 
   // -----------------------------------------------------------------------
@@ -227,8 +250,8 @@ describe("MultiModelEmbedder", () => {
 
     // Assert — only the successful embedder's result is present
     expect(result.good).toBeDefined();
-    expect(result.good.model).toBe("good");
-    expect(result.good.vector).toHaveLength(4);
+    expect(result.good!.model).toBe("good");
+    expect(result.good!.vector).toHaveLength(4);
 
     // The failing embedder should be absent
     expect(result.bad).toBeUndefined();
@@ -315,9 +338,9 @@ describe("MultiModelEmbedder", () => {
 
     // Assert
     expect(Object.keys(result).length).toBe(1);
-    expect(result.solo.model).toBe("solo");
-    expect(result.solo.vector).toHaveLength(1);
-    expect(result.solo.tokens_in).toBe(2); // two words
+    expect(result.solo!.model).toBe("solo");
+    expect(result.solo!.vector).toHaveLength(1);
+    expect(result.solo!.tokens_in).toBe(2); // two words
   });
 
   it("passes empty string to each embedder", async () => {
@@ -334,8 +357,8 @@ describe("MultiModelEmbedder", () => {
     const result = await multi.embedAll("");
 
     // Assert
-    expect(calls1[0].text).toBe("");
-    expect(calls2[0].text).toBe("");
+    expect(calls1[0]!.text).toBe("");
+    expect(calls2[0]!.text).toBe("");
     expect(Object.keys(result).length).toBe(2);
   });
 
@@ -355,7 +378,7 @@ describe("MultiModelEmbedder", () => {
 
     // Assert — keys match the record keys (key1, key2), not the inner model names
     expect(Object.keys(result).sort()).toEqual(["key1", "key2"]);
-    expect(result.key1.model).toBe("actual-model-a");
-    expect(result.key2.model).toBe("actual-model-b");
+    expect(result.key1!.model).toBe("actual-model-a");
+    expect(result.key2!.model).toBe("actual-model-b");
   });
 });

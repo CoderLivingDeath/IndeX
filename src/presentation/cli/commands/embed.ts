@@ -14,6 +14,6 @@ export function registerEmbed(program: Command): void {
       const app = await loadApp();
       const resolvedPath = resolve(path);
       const stats = await app.index.execute(resolvedPath);
-      console.log(`Indexed ${stats.total_files} files, ${stats.total_chunks} chunks (${stats.total_deduped_chunks} deduped)`);
+      console.log(`Indexed ${stats.total_files} files, ${stats.total_chunks} chunks (${stats.total_deduped_chunks} reused)`);
     });
 }

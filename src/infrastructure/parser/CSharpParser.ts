@@ -9,6 +9,8 @@ import type { SourceParser } from "../../domain/ports/SourceParser";
 import type { ParsedSource, SourceType } from "../../domain/types";
 
 export class CSharpParser implements SourceParser {
+  readonly type: SourceType = "code";
+  readonly extensions = [".cs"];
   private readonly hasher = new BLAKE3Hasher();
 
   supportsFile(path: string): boolean {
@@ -21,19 +23,16 @@ export class CSharpParser implements SourceParser {
     const fileBlake3 = await this.hasher.hash(content);
 
     return {
-      type: "code" as SourceType,
-      title: path.split(/[\\/]/).pop() ?? path,
+      type: "code",
+      path,
       content,
       tags: [],
-      path,
-      file_blake3: fileBlake3,
-      semantic_blake3: fileBlake3,
       metadata: {
         kind: "code",
         language: "csharp",
       },
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      file_blake3: fileBlake3,
+      last_parsed: new Date().toISOString(),
     };
   }
 }

@@ -76,7 +76,7 @@ describe("WatchUseCase", () => {
         stop: async () => {},
       };
 
-      const useCase = new WatchUseCase(watcher, makeDiffService(), mockLogger);
+      const useCase = new WatchUseCase(watcher, makeDiffService(), mockLogger, new MockSourceRepository());
       await useCase.execute("./vault");
 
       expect(started).toBe(true);
@@ -103,12 +103,13 @@ describe("WatchUseCase", () => {
         stop: async () => {},
       };
 
-      const useCase = new WatchUseCase(watcher, diffService, mockLogger);
+      const useCase = new WatchUseCase(watcher, diffService, mockLogger, new MockSourceRepository());
       await useCase.execute("./vault");
 
       // Simulate a file change
-      if (changeHandler) {
-        await changeHandler("/vault/file.ts");
+      const handler = changeHandler as ((path: string) => void) | null;
+      if (handler) {
+        await handler("/vault/file.ts");
       }
 
       expect(diffCalled).toBe(true);
@@ -134,14 +135,85 @@ describe("WatchUseCase", () => {
         stop: async () => {},
       };
 
-      const useCase = new WatchUseCase(watcher, diffService, mockLogger);
+      const useCase = new WatchUseCase(watcher, diffService, mockLogger, new MockSourceRepository());
       await useCase.execute("./vault");
 
-      if (addHandler) {
-        await addHandler("/vault/new.ts");
+      const handler = addHandler as ((path: string) => void) | null;
+      if (handler) {
+        await handler("/vault/new.ts");
       }
 
       expect(diffCalled).toBe(true);
+    });
+  });
+
+  describe("unlink — removes from index", () => {
+    test("deletes chunks and file index for the removed path", async () => {
+      const repo = new MockSourceRepository();
+      const filePath = "/vault/deleted.ts";
+      const now = new Date().toISOString();
+
+      await repo.upsert({
+        id: "chunk-1",
+        chunk_id: "chunk-1",
+        source_id: "src-1",
+        type: "code",
+        title: filePath,
+        content: "deleted content",
+        tags: [],
+        path: filePath,
+        file_blake3: "file-hash",
+        semantic_blake3: "sem-hash",
+        chunk_index: 0,
+        total_chunks: 1,
+        embeddings: [],
+        metadata: { kind: "code", language: "typescript" },
+        created_at: now,
+        updated_at: now,
+      });
+      await repo.upsertFileIndex({
+        path: filePath,
+        file_blake3: "file-hash",
+        language: "typescript",
+        imports: [],
+        exports: [],
+        symbols: [],
+        relationships: [],
+        last_parsed: now,
+      });
+
+      let unlinkHandler: ((path: string) => void) | null = null;
+      const watcher: FileWatcher = {
+        on: (event: string, cb: (path: string) => void) => {
+          if (event === "unlink") unlinkHandler = cb;
+        },
+        start: async () => {},
+        stop: async () => {},
+      };
+
+      const useCase = new WatchUseCase(watcher, makeDiffService(), mockLogger, repo);
+      await useCase.execute("./vault");
+      await unlinkHandler!(filePath);
+
+      expect(await repo.getByPath(filePath)).toHaveLength(0);
+      expect(await repo.getFileIndex(filePath)).toBeNull();
+    });
+
+    test("tolerates unlink for a path that is not indexed", async () => {
+      const repo = new MockSourceRepository();
+      let unlinkHandler: ((path: string) => void) | null = null;
+      const watcher: FileWatcher = {
+        on: (event: string, cb: (path: string) => void) => {
+          if (event === "unlink") unlinkHandler = cb;
+        },
+        start: async () => {},
+        stop: async () => {},
+      };
+
+      const useCase = new WatchUseCase(watcher, makeDiffService(), mockLogger, repo);
+      await useCase.execute("./vault");
+
+      await expect(Promise.resolve(unlinkHandler!("/vault/missing.ts"))).resolves.toBeUndefined();
     });
   });
 
@@ -155,7 +227,7 @@ describe("WatchUseCase", () => {
         stop: async () => { stopped = true; },
       };
 
-      const useCase = new WatchUseCase(watcher, makeDiffService(), mockLogger);
+      const useCase = new WatchUseCase(watcher, makeDiffService(), mockLogger, new MockSourceRepository());
       await useCase.execute("./vault");
       await useCase.stop();
 

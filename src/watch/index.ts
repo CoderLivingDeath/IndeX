@@ -5,6 +5,7 @@
 // ---------------------------------------------------------------------------
 
 import { existsSync } from "fs";
+import { fileURLToPath } from "url";
 import { loadWatchConfig, saveWatchConfig, isProcessAlive, isBunDevMode, DEFAULT_IGNORED_PATTERNS, type WatchConfig } from "./WatchConfig";
 import { fetchHealthInfo } from "./WatchHealthServer";
 
@@ -48,6 +49,7 @@ export async function startWatch(directory: string, port?: number): Promise<void
     pid: null,
     status: "starting",
     started_at: null,
+    health_port: null,
     options: {
       debounce_ms: 500,
       ignored: [...DEFAULT_IGNORED_PATTERNS],
@@ -57,12 +59,27 @@ export async function startWatch(directory: string, port?: number): Promise<void
   saveWatchConfig(config);
 
   // Spawn the daemon:
-  //   dev mode  → bun run src/watch/WatchDaemon.ts --dir <dir>
+  //   dev mode  → bun run <absolute path>/WatchDaemon.ts --dir <dir>
   //   compiled  → indeX watch-daemon --dir <dir>
   const bunDev = isBunDevMode();
-  const args = bunDev
-    ? [process.execPath, "run", "src/watch/WatchDaemon.ts", "--dir", directory]
-    : [process.execPath, "watch-daemon", "--dir", directory];
+  let args: string[];
+
+  if (bunDev) {
+    // Resolve relative to this module, not the caller's CWD: the CLI may be
+    // invoked from any project directory.
+    const daemonPath = fileURLToPath(new URL("./WatchDaemon.ts", import.meta.url));
+    if (!existsSync(daemonPath)) {
+      console.error(`Error: watch daemon entrypoint not found: ${daemonPath}`);
+      config.pid = null;
+      config.status = "stopped";
+      config.started_at = null;
+      saveWatchConfig(config);
+      process.exit(1);
+    }
+    args = [process.execPath, "run", daemonPath, "--dir", directory];
+  } else {
+    args = [process.execPath, "watch-daemon", "--dir", directory];
+  }
 
   // Pass --port for visibility (daemon reads port from config, not argv)
   if (port !== undefined) {

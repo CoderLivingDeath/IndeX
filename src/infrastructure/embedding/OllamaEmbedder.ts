@@ -46,12 +46,14 @@ export class OllamaEmbedder implements Embedder {
 
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const response = await fetch(`${this.baseUrl}/api/embeddings`, {
+        const init: RequestInit = {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: this.model, prompt: text }),
-          signal,
-        });
+        };
+        if (signal) init.signal = signal;
+
+        const response = await fetch(`${this.baseUrl}/api/embeddings`, init);
 
         if (!response.ok) {
           const bodyText = await response.text().catch(() => "(no body)");
@@ -61,10 +63,12 @@ export class OllamaEmbedder implements Embedder {
         }
 
         const data = (await response.json()) as { embedding: number[] };
-        const vector = new Float32Array(data.embedding);
+        // The domain contract is number[]; do not leak a Float32Array into
+        // SearchQuery.vector (Array.isArray checks would reject it).
+        const vector = Array.from(data.embedding);
 
         return {
-          vector: vector as unknown as number[],
+          vector,
           model: this.model,
           dimensions: this.dimensions,
           tokens_in: Math.ceil(text.length / 4),

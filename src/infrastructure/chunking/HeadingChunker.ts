@@ -29,7 +29,7 @@ export class HeadingChunker implements Chunker {
     let chunkIndex = 0;
 
     for (let si = 0; si < sections.length; si++) {
-      const section = sections[si];
+      const section = sections[si]!;
       const tokenCount = await this.tokenEstimator.estimate(
         section.fullContent,
       );

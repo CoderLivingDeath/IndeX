@@ -14,10 +14,10 @@ describe("ChunkerFactory", () => {
     ]);
 
     expect(pipeline.chunkers).toHaveLength(4);
-    expect(pipeline.chunkers[0].constructor.name).toBe("HeadingChunker");
-    expect(pipeline.chunkers[1].constructor.name).toBe("ParagraphChunker");
-    expect(pipeline.chunkers[2].constructor.name).toBe("SentenceChunker");
-    expect(pipeline.chunkers[3].constructor.name).toBe("OverflowChunker");
+    expect(pipeline.chunkers[0]!.constructor.name).toBe("HeadingChunker");
+    expect(pipeline.chunkers[1]!.constructor.name).toBe("ParagraphChunker");
+    expect(pipeline.chunkers[2]!.constructor.name).toBe("SentenceChunker");
+    expect(pipeline.chunkers[3]!.constructor.name).toBe("OverflowChunker");
   });
 
   it("pipeline routes markdown through heading chain successfully", async () => {
@@ -39,7 +39,7 @@ More content.`;
 
     expect(result.length).toBeGreaterThan(0);
     // Should use heading strategy since headings exist
-    expect(result[0].strategy).toBe("heading");
+    expect(result[0]!.strategy).toBe("heading");
   });
 
   it("pipeline routes code through code chunker", async () => {
@@ -58,7 +58,7 @@ function bar() { return 2; }`;
     const result = await pipeline.chunk(code, "code");
 
     expect(result.length).toBeGreaterThan(0);
-    expect(result[0].strategy).toBe("code");
+    expect(result[0]!.strategy).toBe("code");
   });
 
   it("pipeline routes generic type through overflow", async () => {
@@ -70,7 +70,7 @@ function bar() { return 2; }`;
     const result = await pipeline.chunk(text, "generic");
 
     expect(result.length).toBeGreaterThan(0);
-    expect(result[0].strategy).toBe("overflow");
+    expect(result[0]!.strategy).toBe("overflow");
   });
 
   it("merges consecutive chunks below 50 tokens with previous chunk", async () => {
@@ -84,7 +84,7 @@ function bar() { return 2; }`;
     const text = Array.from({ length: 20 }, (_, i) => `Sentence ${i + 1}.`).join(" ");
 
     // Get raw chunks (before merge)
-    const rawChunker = pipeline.chunkers[0];
+    const rawChunker = pipeline.chunkers[0]!;
     const rawResult = await rawChunker.chunk(text);
 
     // Get pipeline chunks (with merge/post-process)
@@ -115,8 +115,8 @@ function bar() { return 2; }`;
     expect(result.length).toBeGreaterThan(1);
 
     // Verify overlap exists in content but not in core_content
-    const secondChunkContent = result[1].content;
-    const secondChunkCore = result[1].core_content;
+    const secondChunkContent = result[1]!.content;
+    const secondChunkCore = result[1]!.core_content;
 
     expect(secondChunkContent.length).toBeGreaterThan(secondChunkCore.length);
     expect(secondChunkContent).toContain(secondChunkCore);

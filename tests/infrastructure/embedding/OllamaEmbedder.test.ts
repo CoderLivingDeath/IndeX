@@ -2,12 +2,12 @@
  * RED phase — OllamaEmbedder.test.ts
  *
  * Tests for the OllamaEmbedder HTTP client that calls Ollama's /api/embeddings
- * endpoint. Covers HTTP request formation, response parsing, Float32Array
+ * endpoint. Covers HTTP request formation, response parsing, number[]
  * conversion, exponential backoff retry (1s -> 2s -> 4s), AbortSignal
  * cancellation, and readonly property access.
  *
  * Acceptance Criteria:
- *  1. embed() sends HTTP POST to /api/embeddings and returns Float32Array
+ *  1. embed() sends HTTP POST to /api/embeddings and returns number[]
  *     of configured dimensions (default 384)
  *  2. embedBatch() sends one HTTP POST per text, returns array of Embeddings
  *  3. Exponential backoff: 1s -> 2s delay between up to 3 attempts, then throws
@@ -47,7 +47,7 @@ function createMockFetch(embedding: number[]) {
       headers: { "Content-Type": "application/json" },
     });
   };
-  return { mock: mock as typeof fetch, info };
+  return { mock: mock as unknown as typeof fetch, info };
 }
 
 /**
@@ -59,7 +59,7 @@ function createFailingMockFetch() {
     callCount++;
     throw new Error("Network error");
   };
-  return { mock: mock as typeof fetch, callCount: () => callCount };
+  return { mock: mock as unknown as typeof fetch, callCount: () => callCount };
 }
 
 /**
@@ -81,7 +81,7 @@ function createSequentialMockFetch(failCount: number, successEmbedding: number[]
       headers: { "Content-Type": "application/json" },
     });
   };
-  return { mock: mock as typeof fetch, callCount: () => callCount };
+  return { mock: mock as unknown as typeof fetch, callCount: () => callCount };
 }
 
 /**
@@ -93,7 +93,7 @@ function createErrorStatusMockFetch(status: number, statusText: string) {
     callCount++;
     return new Response(null, { status, statusText });
   };
-  return { mock: mock as typeof fetch, callCount: () => callCount };
+  return { mock: mock as unknown as typeof fetch, callCount: () => callCount };
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +183,7 @@ describe("OllamaEmbedder", () => {
   });
 
   // -----------------------------------------------------------------------
-  // AC 1: embed() sends HTTP POST and returns Float32Array of configured dims
+  // AC 1: embed() sends HTTP POST and returns number[] of configured dims
   // -----------------------------------------------------------------------
   describe("embed() (AC 1)", () => {
     it("sends HTTP POST to /api/embeddings with correct model and prompt", async () => {
@@ -203,7 +203,7 @@ describe("OllamaEmbedder", () => {
       expect(body.prompt).toBe("hello world");
     });
 
-    it("returns an Embedding with a Float32Array vector", async () => {
+    it("returns an Embedding with a number[] vector", async () => {
       // Arrange
       const { mock } = createMockFetch([0.5, 0.6, 0.7, 0.8]);
       globalThis.fetch = mock;
@@ -213,7 +213,7 @@ describe("OllamaEmbedder", () => {
       const result = await embedder.embed("test");
 
       // Assert
-      expect(result.vector).toBeInstanceOf(Float32Array);
+      expect(Array.isArray(result.vector)).toBe(true);
     });
 
     it("returns vector with length matching default dimensions (384)", async () => {
@@ -274,7 +274,7 @@ describe("OllamaEmbedder", () => {
           headers: { "Content-Type": "text/plain" },
         });
       };
-      globalThis.fetch = mockFetch as typeof fetch;
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
       const embedder = new OllamaEmbedder("bad-response", 3);
 
       // Act & Assert
@@ -302,7 +302,7 @@ describe("OllamaEmbedder", () => {
       // Assert
       expect(results).toHaveLength(3);
       for (const r of results) {
-        expect(r.vector).toBeInstanceOf(Float32Array);
+        expect(Array.isArray(r.vector)).toBe(true);
         expect(r.vector).toHaveLength(3);
         expect(r.model).toBe("batch-model");
         expect(r.dimensions).toBe(3);
@@ -319,7 +319,7 @@ describe("OllamaEmbedder", () => {
           headers: { "Content-Type": "application/json" },
         });
       };
-      globalThis.fetch = mockFetch as typeof fetch;
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
       const embedder = new OllamaEmbedder("count-model", 2);
 
       // Act
@@ -340,8 +340,8 @@ describe("OllamaEmbedder", () => {
 
       // Assert
       expect(results).toHaveLength(1);
-      expect(results[0].model).toBe("single-batch");
-      expect(results[0].vector).toHaveLength(2);
+      expect(results[0]!.model).toBe("single-batch");
+      expect(results[0]!.vector).toHaveLength(2);
     });
 
     it("returns empty array for empty batch (no fetch calls)", async () => {
@@ -361,7 +361,7 @@ describe("OllamaEmbedder", () => {
       const mockFetch = async (): Promise<Response> => {
         throw new Error("Persistent failure");
       };
-      globalThis.fetch = mockFetch as typeof fetch;
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
       globalThis.setTimeout = ((fn: (...args: any[]) => void) => {
         fn();
         return 0 as any;
@@ -394,7 +394,7 @@ describe("OllamaEmbedder", () => {
       const result = await embedder.embed("retry test");
 
       // Assert — 2 fetch calls total (1 fail + 1 success)
-      expect(result.vector).toBeInstanceOf(Float32Array);
+      expect(Array.isArray(result.vector)).toBe(true);
       expect(result.vector).toHaveLength(3);
     });
 
@@ -499,13 +499,13 @@ describe("OllamaEmbedder", () => {
         _url: string | URL | Request,
         init?: RequestInit,
       ): Promise<Response> => {
-        capturedSignal = init?.signal;
+        capturedSignal = init?.signal ?? undefined;
         return new Response(JSON.stringify({ embedding: [0.1] }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
       };
-      globalThis.fetch = mockFetch as typeof fetch;
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
       const embedder = new OllamaEmbedder("signal-test", 1);
       const controller = new AbortController();
 
@@ -530,7 +530,7 @@ describe("OllamaEmbedder", () => {
           headers: { "Content-Type": "application/json" },
         });
       };
-      globalThis.fetch = mockFetch as typeof fetch;
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
       const embedder = new OllamaEmbedder("abort-test", 1);
       const controller = new AbortController();
       controller.abort();
@@ -556,7 +556,7 @@ describe("OllamaEmbedder", () => {
         }
         throw new Error("Network error");
       };
-      globalThis.fetch = mockFetch as typeof fetch;
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
       // Mock setTimeout in case any sleep runs (it shouldn't since first fetch
       // throws AbortError, but hedge against implementation changes)
       globalThis.setTimeout = ((fn: (...args: any[]) => void) => {
@@ -599,7 +599,7 @@ describe("OllamaEmbedder", () => {
           // Intentionally never resolve — keep request in-flight
         });
       };
-      globalThis.fetch = mockFetch as typeof fetch;
+      globalThis.fetch = mockFetch as unknown as typeof fetch;
       const embedder = new OllamaEmbedder("mid-flight", 2);
       const controller = new AbortController();
 

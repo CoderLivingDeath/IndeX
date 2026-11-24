@@ -14,6 +14,8 @@ export interface SourceRepository {
   deleteByPath(path: string): Promise<void>;
   search(query: SearchQuery): Promise<SearchResult[]>;
   hasSemanticBlake3(hash: string): Promise<boolean>;
+  /** Reuse an existing vector for duplicate content, or null if unavailable. */
+  getEmbeddingBySemanticHash(hash: string): Promise<number[] | null>;
   hasModelEmbedding(id: string): Promise<boolean>;
   getSourceIdsByHash(hash: string): Promise<string[]>;
   getFileBlake3ByPath(path: string): Promise<string | null>;

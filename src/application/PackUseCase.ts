@@ -326,13 +326,17 @@ export class PackUseCase {
 
     // 3. Resolve include/exclude patterns to absolute (relative to directory)
     //    so they match against the absolute paths from scanDirectory.
-    const resolvedOptions = options
-      ? {
-          ...options,
-          include: options.include?.map((p) => resolve(directory, p).replace(/\\/g, "/")),
-          exclude: options.exclude?.map((p) => resolve(directory, p).replace(/\\/g, "/")),
-        }
-      : undefined;
+    const resolvedOptions: { include?: string[]; exclude?: string[] } | undefined =
+      options
+        ? {
+            ...(options.include
+              ? { include: options.include.map((p) => resolve(directory, p).replace(/\\/g, "/")) }
+              : {}),
+            ...(options.exclude
+              ? { exclude: options.exclude.map((p) => resolve(directory, p).replace(/\\/g, "/")) }
+              : {}),
+          }
+        : undefined;
     matched = filterByGlob(matched, resolvedOptions);
 
     // 4. Parse all files into entries (two-pass: first parse all for TOC)

@@ -43,6 +43,16 @@ function createSpyEmbedder(
         tokens_in: text.length,
       };
     },
+    embedBatch: async (texts: string[]): Promise<Embedding[]> =>
+      Promise.all(texts.map((text) => {
+        embedCalls.push(text);
+        return Promise.resolve({
+          vector: Array.from({ length: dimensions }, (_, i) => i + 1),
+          model,
+          dimensions,
+          tokens_in: text.length,
+        });
+      })),
   };
 }
 
@@ -198,8 +208,8 @@ describe("CachedEmbedder", () => {
 
     // Assert — exactly one set() call with the expected key
     expect(cache.setCalls).toHaveLength(1);
-    expect(cache.setCalls[0].key).toBe("store-model:store-hash");
-    expect(cache.setCalls[0].embedding.vector).toEqual([1, 2]);
+    expect(cache.setCalls[0]!.key).toBe("store-model:store-hash");
+    expect(cache.setCalls[0]!.embedding.vector).toEqual([1, 2]);
   });
 
   // -----------------------------------------------------------------------

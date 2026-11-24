@@ -15,7 +15,7 @@ describe("OverflowChunker", () => {
     const result = await chunker.chunk(text);
 
     expect(result.length).toBeGreaterThan(1);
-    expect(result[0].strategy).toBe("overflow");
+    expect(result[0]!.strategy).toBe("overflow");
   });
 
   it("each chunk has at least min_tokens", async () => {
@@ -40,7 +40,7 @@ describe("OverflowChunker", () => {
     const result = await chunker.chunk(text);
 
     expect(result).toHaveLength(1);
-    expect(result[0].content).toBe(text);
+    expect(result[0]!.content).toBe(text);
   });
 
   it("has type 'generic'", async () => {
@@ -56,8 +56,8 @@ describe("OverflowChunker", () => {
 
     const result = await chunker.chunk(text);
 
-    expect(result[0].chunk_index).toBe(0);
-    expect(result[result.length - 1].chunk_index).toBe(result.length - 1);
+    expect(result[0]!.chunk_index).toBe(0);
+    expect(result[result.length - 1]!.chunk_index).toBe(result.length - 1);
     for (const chunk of result) {
       expect(chunk.total_chunks).toBe(result.length);
     }

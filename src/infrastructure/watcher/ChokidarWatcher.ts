@@ -1,11 +1,28 @@
 import { watch } from "chokidar";
 import type { FileWatcher } from "../../domain/ports/FileWatcher";
+import { matchesAny } from "../../shared/globMatcher";
+
+/**
+ * Build a chokidar-compatible ignore predicate from glob patterns.
+ *
+ * chokidar 4+ removed glob support, so resolving glob strings itself would
+ * silently ignore nothing. The predicate keeps the project's glob syntax
+ * while matching chokidar's current API.
+ */
+export function createIgnoreMatcher(
+  patterns: string[],
+): ((path: string) => boolean) | undefined {
+  if (patterns.length === 0) return undefined;
+  return (path: string) => matchesAny(patterns, path);
+}
 
 export interface ChokidarWatcherOptions {
   /** Debounce interval in milliseconds (default: 500). */
   debounceMs?: number;
-  /** Glob patterns to ignore (passed to chokidar). */
+  /** Glob patterns to ignore (translated to a chokidar predicate). */
   ignored?: string[];
+  /** Injectable watch factory (tests only). */
+  watchFactory?: typeof watch;
 }
 
 /**
@@ -22,11 +39,13 @@ export class ChokidarWatcher implements FileWatcher {
   private readonly debounceMs: number;
   private readonly paths: string[];
   private readonly ignored: string[];
+  private readonly watchFactory: typeof watch;
 
   constructor(paths: string | string[], options?: ChokidarWatcherOptions) {
     this.paths = Array.isArray(paths) ? paths : [paths];
     this.debounceMs = options?.debounceMs ?? 500;
     this.ignored = options?.ignored ?? [];
+    this.watchFactory = options?.watchFactory ?? watch;
   }
 
   on(event: "add" | "change" | "unlink", cb: (path: string) => void): void {
@@ -36,10 +55,11 @@ export class ChokidarWatcher implements FileWatcher {
   async start(): Promise<void> {
     if (this.watcher) return;
 
-    this.watcher = watch(this.paths, {
+    const ignored = createIgnoreMatcher(this.ignored);
+    this.watcher = this.watchFactory(this.paths, {
       ignoreInitial: true,
       persistent: true,
-      ignored: this.ignored.length > 0 ? this.ignored : undefined,
+      ...(ignored ? { ignored } : {}),
     });
 
     return new Promise<void>((resolve) => {

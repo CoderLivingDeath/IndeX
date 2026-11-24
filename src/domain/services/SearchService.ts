@@ -1,92 +1,110 @@
-import type { Embedder } from "../systems/EmbeddingSystem";
 import type { SourceRepository } from "../ports/SourceRepository";
 import type { SearchQuery, SearchResult } from "../types";
 
 /**
- * Three-mode search service: semantic (ANN), keyword (FTS/BM25), and hybrid.
+ * Single ranking engine for IndeX search.
  *
- * - **Semantic**: embeds the query, then delegates to `repo.search()` with
- *   mode `"semantic"`. If results carry `model_scores` they are averaged.
- * - **Keyword**: delegates directly to `repo.search()` with mode `"keyword"`.
- * - **Hybrid**: runs both modes, normalizes BM25 scores to [0,1], and merges
- *   via weighted sum controlled by `hybrid_weight`.
+ * The query embedding is owned by the caller (SearchUseCase) and passed in as
+ * a precomputed vector — this service never embeds text itself. That keeps
+ * vector work to exactly one call per query and makes the vector path explicit.
  *
- * All modes apply post-filtering by `tags` and `source_types` when specified.
+ * - **Semantic**: ANN search with the supplied vector (cosine similarity).
+ * - **Keyword**: FTS/BM25, normalized to [0, 1].
+ * - **Hybrid**: semantic + keyword merged with `hybrid_weight`.
+ * - **AST**: structural FTS from the file index.
  */
 export class SearchService {
   private readonly hybridWeight: number;
 
   constructor(
-    private readonly embedder: Embedder,
     private readonly repo: SourceRepository,
     options?: { hybrid_weight?: number },
   ) {
     this.hybridWeight = options?.hybrid_weight ?? 0.7;
   }
 
-  async search(query: SearchQuery): Promise<SearchResult[]> {
+  /**
+   * Execute a search with a precomputed query vector.
+   *
+   * @param query  - Search query (mode, filters, top_k).
+   * @param vector - Query embedding; required for semantic/hybrid.
+   */
+  async execute(query: SearchQuery, vector?: number[]): Promise<SearchResult[]> {
     switch (query.mode) {
       case "semantic":
-        return this.semanticSearch(query);
+        return this.semanticSearch(query, vector);
       case "keyword":
         return this.keywordSearch(query);
       case "hybrid":
-        return this.hybridSearch(query);
+        return this.hybridSearch(query, vector);
       case "ast":
         return this.astSearch(query);
     }
   }
 
-  private async astSearch(query: SearchQuery): Promise<SearchResult[]> {
-    return this.repo.search({ ...query, mode: "ast" });
-  }
-
   // ── Private mode implementations ──────────────────────────
 
-  private async semanticSearch(query: SearchQuery): Promise<SearchResult[]> {
-    // Embed the query text (triggers multi-model scoring path)
-    await this.embedder.embed(query.text);
+  private async semanticSearch(
+    query: SearchQuery,
+    vector?: number[],
+  ): Promise<SearchResult[]> {
+    if (!hasVector(vector)) return [];
 
-    const results = await this.repo.search({ ...query, mode: "semantic" });
+    const results = await this.repo.search({
+      ...query,
+      mode: "semantic",
+      vector,
+    });
 
-    // Average model_scores when multiple models produced results
     for (const result of results) {
       this.averageModelScores(result);
+      result.score = clamp01(result.score);
     }
 
     return this.postFilter(results, query);
   }
 
   private async keywordSearch(query: SearchQuery): Promise<SearchResult[]> {
-    const results = await this.repo.search({ ...query, mode: "keyword" });
+    const results = (await this.repo.search({ ...query, mode: "keyword" }))
+      .filter((r) => r.score > 0);
+    // Keep every match visible: scale to (0, 1] rather than min-max, which
+    // would turn the weakest match into a zero score and filter it out.
+    this.scaleScores(results, 0.01);
     return this.postFilter(results, query);
   }
 
-  private async hybridSearch(query: SearchQuery): Promise<SearchResult[]> {
-    // Embed the query (consumed by the semantic leg)
-    await this.embedder.embed(query.text);
+  private async hybridSearch(
+    query: SearchQuery,
+    vector?: number[],
+  ): Promise<SearchResult[]> {
+    if (!hasVector(vector)) return [];
 
-    const [semanticResults, keywordResults] = await Promise.all([
-      this.repo.search({ ...query, mode: "semantic" }),
+    const [semanticResults, rawKeywordResults] = await Promise.all([
+      this.repo.search({ ...query, mode: "semantic", vector }),
       this.repo.search({ ...query, mode: "keyword" }),
     ]);
+    const keywordResults = rawKeywordResults.filter((r) => r.score > 0);
 
-    // Average model_scores for semantic results
-    for (const r of semanticResults) {
-      this.averageModelScores(r);
+    for (const result of semanticResults) {
+      this.averageModelScores(result);
+      result.score = clamp01(result.score);
     }
 
-    // Normalise BM25 scores to [0, 1]
+    // Normalize BM25 scores to [0, 1] before weighted merging.
     this.normalizeBM25(keywordResults);
 
-    // Weighted merge: final = w * semantic + (1-w) * keyword
     const merged = this.mergeHybrid(semanticResults, keywordResults);
-
-    // Sort by final score descending, limit to top_k
     merged.sort((a, b) => b.score - a.score);
     const top = merged.slice(0, query.top_k);
 
     return this.postFilter(top, query);
+  }
+
+  private async astSearch(query: SearchQuery): Promise<SearchResult[]> {
+    const results = (await this.repo.search({ ...query, mode: "ast" }))
+      .filter((r) => r.score > 0);
+    this.scaleScores(results, 0.01);
+    return this.postFilter(results, query);
   }
 
   // ── Helpers ────────────────────────────────────────────────
@@ -104,19 +122,29 @@ export class SearchService {
     }
   }
 
-  /** Normalize the `score` array in-place via min-max scaling to [0, 1]. */
+  /** Normalize the scores in-place via min-max scaling to [0, 1]. */
   private normalizeBM25(results: SearchResult[]): void {
+    this.scaleScores(results, 0);
+  }
+
+  /**
+   * Scale scores in-place to `[floor, 1]` preserving order. When all scores
+   * are identical, non-zero scores become 1.
+   */
+  private scaleScores(results: SearchResult[], floor: number): void {
     if (results.length === 0) return;
     const scores = results.map((r) => r.score);
     const min = Math.min(...scores);
     const max = Math.max(...scores);
+
     if (max === min) {
-      // All scores identical — set all to 1 (they are equally relevant)
-      results.forEach((r) => (r.score = 1));
+      results.forEach((r) => (r.score = max > 0 ? 1 : 0));
       return;
     }
+
+    const span = max - min;
     for (const r of results) {
-      r.score = (r.score - min) / (max - min);
+      r.score = floor + (1 - floor) * ((r.score - min) / span);
     }
   }
 
@@ -171,7 +199,6 @@ export class SearchService {
     query: SearchQuery,
   ): SearchResult[] {
     return results.filter((r) => {
-      // Exclude non-matching results
       if (r.score <= 0) return false;
       if (query.min_score !== undefined && r.score < query.min_score) return false;
       if (query.tags?.length) {
@@ -183,4 +210,13 @@ export class SearchService {
       return true;
     });
   }
+}
+
+function hasVector(vector?: number[]): vector is number[] {
+  return Array.isArray(vector) && vector.length > 0;
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
 }

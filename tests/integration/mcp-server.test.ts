@@ -9,6 +9,7 @@ import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { PassThrough } from "stream";
 import { IndeXMcpServer } from "../../src/presentation/mcp/IndeXMcpServer";
 import { SearchUseCase } from "../../src/application/SearchUseCase";
+import { SearchService } from "../../src/domain/services/SearchService";
 import { IndexUseCase } from "../../src/application/IndexUseCase";
 import { PackUseCase } from "../../src/application/PackUseCase";
 import { ChunkUseCase } from "../../src/application/ChunkUseCase";
@@ -39,16 +40,7 @@ function createMockDeps() {
 
   const search = new SearchUseCase({
     embedder: new MockEmbedder("test", 4),
-    repo,
-    packer: {
-      pack: async (results: any[]) => ({
-        markdown: "",
-        chunks_used: 0,
-        total_tokens: 0,
-        truncated: false,
-        source_notes: [],
-      }),
-    },
+    ranker: new SearchService(repo),
     logger: mockLogger,
   } as any);
 

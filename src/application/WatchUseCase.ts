@@ -6,6 +6,7 @@
 
 import type { FileWatcher } from "../domain/ports/FileWatcher";
 import type { Logger } from "../domain/ports/Logger";
+import type { SourceRepository } from "../domain/ports/SourceRepository";
 import { DiffIndexingService } from "../domain/services/DiffIndexingService";
 
 /**
@@ -19,6 +20,7 @@ export class WatchUseCase {
     private readonly watcher: FileWatcher,
     private readonly diffService: DiffIndexingService,
     private readonly logger: Logger,
+    private readonly repo: SourceRepository,
   ) {}
 
   /**
@@ -44,8 +46,14 @@ export class WatchUseCase {
       });
     });
 
-    this.watcher.on("unlink", (path: string) => {
+    this.watcher.on("unlink", async (path: string) => {
       this.logger.info(`File removed: ${path}`);
+      try {
+        await this.repo.deleteByPath(path);
+        await this.repo.deleteFileIndex(path);
+      } catch (err) {
+        this.logger.error(`Failed to remove ${path} from index: ${err}`);
+      }
     });
 
     await this.watcher.start();

@@ -36,19 +36,17 @@ export function registerPack(program: Command): void {
       const include = options.include?.split(",").filter(Boolean);
       const exclude = options.exclude?.split(",").filter(Boolean);
 
-      // Only flags that were explicitly passed override defaults
-      const sectionOpts: Record<string, boolean | undefined> = {};
-      for (const key of ["meta", "ast", "content", "links"] as const) {
-        if (options[key] !== undefined) sectionOpts[key] = options[key];
-      }
-
       const format = options.format === "md" ? "md" : "jsonl";
 
+      // Only flags that were explicitly passed override defaults.
       const packed = await app.pack.execute(resolvedPath, {
-        include,
-        exclude,
         format,
-        ...sectionOpts,
+        ...(include ? { include } : {}),
+        ...(exclude ? { exclude } : {}),
+        ...(options.meta !== undefined ? { meta: options.meta } : {}),
+        ...(options.ast !== undefined ? { ast: options.ast } : {}),
+        ...(options.content !== undefined ? { content: options.content } : {}),
+        ...(options.links !== undefined ? { links: options.links } : {}),
       });
 
       // Always display full output in terminal

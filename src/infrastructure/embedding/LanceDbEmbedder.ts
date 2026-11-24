@@ -28,7 +28,7 @@ export class LanceDbEmbedder implements Embedder {
 
   async embed(_text: string): Promise<Embedding> {
     return {
-      vector: new Float32Array(this.dimensions) as unknown as number[],
+      vector: Array.from({ length: this.dimensions }, () => 0),
       model: this.model,
       dimensions: this.dimensions,
       tokens_in: 0,

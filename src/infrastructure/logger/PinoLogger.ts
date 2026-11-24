@@ -76,8 +76,7 @@ export class PinoLogger implements Logger {
   }
 
   child(context: Record<string, unknown>): PinoLogger {
-    const child = new PinoLogger({ pretty: true }, this.logger.stream);
-    // @ts-expect-error - accessing internal pino logger for child creation
+    const child = new PinoLogger();
     child.logger = this.logger.child(context);
     return child;
   }

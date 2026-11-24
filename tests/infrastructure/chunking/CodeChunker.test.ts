@@ -74,9 +74,9 @@ const x = 42;`;
     // With interleaved ordering, non-decl code before and after function
     // becomes separate chunks: [import chunk, function foo, const x chunk]
     expect(result.length).toBe(3);
-    expect(result[0].content).toContain("import");
-    expect(result[1].content).toContain("function foo");
-    expect(result[2].content).toContain("const x = 42");
+    expect(result[0]!.content).toContain("import");
+    expect(result[1]!.content).toContain("function foo");
+    expect(result[2]!.content).toContain("const x = 42");
   });
 
   it("preserves source order with interleaved declarations and non-declarations", async () => {
@@ -99,10 +99,10 @@ function bar() {
     // 3. "const b = 2;"
     // 4. "function bar() {...}"
     expect(result.length).toBe(4);
-    expect(result[0].content).toContain("const a = 1");
-    expect(result[1].content).toContain("function foo");
-    expect(result[2].content).toContain("const b = 2");
-    expect(result[3].content).toContain("function bar");
+    expect(result[0]!.content).toContain("const a = 1");
+    expect(result[1]!.content).toContain("function foo");
+    expect(result[2]!.content).toContain("const b = 2");
+    expect(result[3]!.content).toContain("function bar");
   });
 
   it("has type 'code'", async () => {

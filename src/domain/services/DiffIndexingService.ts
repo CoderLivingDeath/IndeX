@@ -1,6 +1,6 @@
 import type { FileFilter } from "../ports/FileFilter";
 import type { SourceParserRegistry } from "../ports/SourceParserRegistry";
-import type { Chunker } from "../systems/ChunkingSystem";
+import type { Chunk, Chunker } from "../systems/ChunkingSystem";
 import type { EmbedderRegistry } from "../systems/EmbeddingSystem";
 import type { SourceRepository } from "../ports/SourceRepository";
 import type { Hasher } from "../systems/HashingSystem";
@@ -121,39 +121,72 @@ export class DiffIndexingService {
 
     // Generate AST summary for semantic enrichment
     const astSummary = parsed.fileIndex ? generateAstSummary(parsed.fileIndex) : "";
+    const embedder = this.embedderRegistry.getEmbedder(parsed.type);
 
-    const batch: SourceData[] = [];
-
+    const entries: DiffChunkEntry[] = [];
     for (const chunk of chunks) {
       // Append AST summary to content before embedding (semantic AST search)
-      // Truncate to fit model's context window
+      // Truncate to fit model's context window.
       const embedContent = await truncateEmbedContent(astSummary, chunk.core_content);
-
       const semanticHash = await this.hasher.hash(embedContent);
-      const embedder = this.embedderRegistry.getEmbedder(parsed.type);
-      const embeddings: number[] = [];
+      entries.push({
+        chunk,
+        embedContent,
+        semanticHash,
+        key: `${embedder?.model ?? "none"}:${semanticHash}`,
+        vector: null,
+      });
+    }
 
-      if (embedder) {
-        const result = await embedder.embed(embedContent);
-        embeddings.push(...result.vector);
+    // Group identical content: embed once, reuse the vector for duplicates.
+    const byKey = new Map<string, DiffChunkEntry[]>();
+    for (const entry of entries) {
+      const group = byKey.get(entry.key);
+      if (group) group.push(entry);
+      else byKey.set(entry.key, [entry]);
+    }
+
+    const pending: Array<{ key: string; entries: DiffChunkEntry[] }> = [];
+    for (const [key, group] of byKey) {
+      const first = group[0]!;
+      if (!embedder) continue;
+
+      const existing = await this.repo.getEmbeddingBySemanticHash(first.semanticHash);
+      if (existing && existing.length === embedder.dimensions) {
+        for (const entry of group) entry.vector = existing;
+        continue;
       }
+      pending.push({ key, entries: group });
+    }
 
-      const now = new Date().toISOString();
+    if (pending.length > 0 && embedder) {
+      const embeddings = await embedder.embedBatch(
+        pending.map((p) => p.entries[0]!.embedContent),
+      );
+      for (let i = 0; i < pending.length; i++) {
+        const vector = [...embeddings[i]!.vector];
+        for (const entry of pending[i]!.entries) entry.vector = vector;
+      }
+    }
 
+    const batch: SourceData[] = [];
+    const now = new Date().toISOString();
+
+    for (const entry of entries) {
       batch.push({
         id: crypto.randomUUID(),
         chunk_id: crypto.randomUUID(),
         source_id: sourceId,
         type: parsed.type,
         title: filePath,
-        content: chunk.content,
+        content: entry.chunk.content,
         tags: parsed.tags,
         path: filePath,
         file_blake3: fileHash,
-        semantic_blake3: semanticHash,
-        chunk_index: chunk.chunk_index,
-        total_chunks: chunk.total_chunks,
-        embeddings,
+        semantic_blake3: entry.semanticHash,
+        chunk_index: entry.chunk.chunk_index,
+        total_chunks: entry.chunk.total_chunks,
+        embeddings: entry.vector ?? [],
         metadata: metaWithAst,
         created_at: now,
         updated_at: now,
@@ -170,6 +203,15 @@ export class DiffIndexingService {
     }
   }
 
+}
+
+/** A chunk awaiting (or holding) its embedding for a single file reprocess. */
+interface DiffChunkEntry {
+  chunk: Chunk;
+  embedContent: string;
+  semanticHash: string;
+  key: string;
+  vector: number[] | null;
 }
 
 /**

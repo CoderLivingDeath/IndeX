@@ -5,17 +5,21 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/bun";
-import { join } from "path";
-import { writeFileSync, existsSync } from "fs";
+import { resolve } from "path";
+import { writeFileSync } from "fs";
 import type { AppUseCases } from "../../index";
-
-// Web root — absolute path so server works regardless of CWD
-const WEB_ROOT = join(import.meta.dir!, "../web");
+import { WEB_DIST, buildWeb } from "./web-build";
 
 /**
  * Create a Hono HTTP API server wrapping the IndeX application.
+ *
+ * @param webRoot - Directory with the built React SPA (default: dist/web).
  */
-export function createServer(app: AppUseCases, hasVectorEmbedder: boolean = false): Hono {
+export function createServer(
+  app: AppUseCases,
+  hasVectorEmbedder: boolean = false,
+  webRoot: string = WEB_DIST,
+): Hono {
   const server = new Hono();
 
   // CORS for SPA
@@ -76,9 +80,12 @@ export function createServer(app: AppUseCases, hasVectorEmbedder: boolean = fals
     }
 
     try {
+      // Fetch enough results to cover the requested page. `total` is the
+      // size of this fetched window (LanceDB has no cheap count query).
+      const fetchK = Math.min(1000, Math.max(topK, offset + limit));
       const searchOpts: Record<string, any> = {
         mode,
-        top_k: topK + offset, // fetch extra results to support offset
+        top_k: fetchK,
       };
       if (tags) searchOpts.tags = tags;
       if (sourceTypes && sourceTypes.length > 0) searchOpts.source_types = sourceTypes;
@@ -98,6 +105,15 @@ export function createServer(app: AppUseCases, hasVectorEmbedder: boolean = fals
       }
       return c.json({ error: String(err), results: [], count: 0, total: 0 }, 200);
     }
+  });
+
+  // GET /api/system — runtime environment for the UI
+  server.get("/api/system", async (c) => {
+    return c.json({
+      cwd: process.cwd(),
+      storage: "LanceDB",
+      server: new URL(c.req.url).origin,
+    });
   });
 
   // GET /api/stats — always reads live from the repo
@@ -125,10 +141,12 @@ export function createServer(app: AppUseCases, hasVectorEmbedder: boolean = fals
     }
 
     try {
-      const stats = await app.index.execute(path);
+      // Normalise to an absolute path so rows replace existing entries
+      // instead of creating relative-path duplicates.
+      const stats = await app.index.execute(resolve(path));
       return c.json({
         status: "ok",
-        message: `Indexed ${stats.total_files} files, ${stats.total_chunks} chunks (${stats.total_deduped_chunks} deduped)`,
+        message: `Indexed ${stats.total_files} files, ${stats.total_chunks} chunks (${stats.total_deduped_chunks} reused)`,
         stats,
       });
     } catch (err: any) {
@@ -169,8 +187,8 @@ export function createServer(app: AppUseCases, hasVectorEmbedder: boolean = fals
     }
   });
 
-  // ── Static files (SPA) ──────────────────────────────────────
-  server.use("/*", serveStatic({ root: WEB_ROOT }));
+  // ── Static files (React SPA) ───────────────────────────────
+  server.use("/*", serveStatic({ root: webRoot }));
 
   return server;
 }
@@ -184,11 +202,16 @@ export async function serve(port: number = 3000, useMemory: boolean = false): Pr
   const { createApp } = await import("../../index");
   const { PinoLogger } = await import("../../infrastructure/logger/PinoLogger");
 
+  const webRoot = await buildWeb().catch((err) => {
+    console.error(`\n  Failed to build the web UI: ${err}\n`);
+    process.exit(1);
+  });
+
   const app = createApp({
     testMode: useMemory,
     logger: new PinoLogger({ level: "info", pretty: true }),
   });
-  const server = createServer(app, true); // OllamaEmbedder = vector search available
+  const server = createServer(app, true, webRoot); // OllamaEmbedder = vector search available
 
   try {
     Bun.serve({

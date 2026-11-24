@@ -253,7 +253,7 @@ describe("EmbedderCacheLRU", () => {
 
     const keys = Array.from({ length: 50 }, (_, i) => `key:${i}`);
     for (let idx = 0; idx < keys.length; idx++) {
-      await cache.set(keys[idx], makeEmbedding("m", [idx / 50]));
+      await cache.set(keys[idx]!, makeEmbedding("m", [idx / 50]));
     }
 
     expect(cache.size).toBe(50);

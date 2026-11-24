@@ -51,6 +51,8 @@ describe("SymbolKind", () => {
           return "cls";
         case "interface":
           return "iface";
+        case "struct":
+          return "struct";
         case "type":
           return "type";
         case "enum":
